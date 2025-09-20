@@ -363,7 +363,8 @@ def main():
 
                 if not player.current_location.monsters:
                     message += f"\n\nVictory! You have cleared the {player.current_location.name}."
-                    game_mode = "explore"
+                    if game_mode == "combat":
+                        game_mode = "explore"
                 elif game_mode == "combat":
                     enemy_turn_message = ""
                     for monster in player.current_location.monsters:
