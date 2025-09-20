@@ -478,6 +478,7 @@ def save_game(player):
     save_data = {
         "name": player.name,
         "hp": player.hp,
+        "max_hp": player.max_hp,
         "attack_power": player.attack_power,
         "current_location_id": player.current_location.id,
         "inventory_ids": [item.id for item in player.inventory],
@@ -502,6 +503,7 @@ def load_player_from_save(save_data, all_locations, all_items):
         save_data["attack_power"]
     )
     player.inventory = [copy.deepcopy(all_items[item_id]) for item_id in save_data["inventory_ids"]]
+    player.max_hp = save_data.get("max_hp", player.hp)
     player.quests = save_data["quests"]
     player.discovered_locations = set(save_data["discovered_locations"])
     player.level = save_data.get("level", 1)
