@@ -145,6 +145,24 @@ class SwampLocation(WildernessLocation):
 class VolcanicLocation(WildernessLocation):
     pass
 
+class Skill:
+    def __init__(self, id, name, description, skill_type, cost, requirements, effect):
+        self.id = id
+        self.name = name
+        self.description = description
+        self.skill_type = skill_type
+        self.cost = cost
+        self.requirements = requirements
+        self.effect = effect
+
+class ActiveAbility:
+    def __init__(self, skill):
+        self.id = skill.id
+        self.name = skill.name
+        self.effect = skill.effect
+        self.cooldown = 0
+        self.max_cooldown = skill.effect.get('combat_ability', {}).get("cooldown", 1)
+
 class Player(Character):
     def __init__(self, id, name, current_location, hp=20, max_hp=20, attack_power=5):
         super().__init__(id, name, hp, attack_power)
@@ -159,6 +177,8 @@ class Player(Character):
         self.xp_to_next_level = 100
         self.skill_points = 0
         self.critical_chance = 0.0 # Represented as a float, e.g., 0.05 for 5%
+        self.unlocked_skills = []
+        self.active_abilities = []
 
     def move(self, direction):
         moved = False
@@ -276,6 +296,69 @@ class LevelUpManager:
             return f"You chose: {chosen_upgrade.text}. Your power grows!"
         else:
             return "You decided to save your skill point for later."
+class SkillTreeManager:
+    def __init__(self, skills_data):
+        self.skills = {}
+        for skill_id, data in skills_data.items():
+            # The 'type' key from JSON is renamed to 'skill_type' for the Skill class
+            data['skill_type'] = data.pop('type')
+            self.skills[skill_id] = Skill(id=skill_id, **data)
+
+    def get_available_skills(self, player):
+        available = []
+        for skill_id, skill in self.skills.items():
+            if skill_id in player.unlocked_skills:
+                continue
+
+            reqs_met = True
+            for req in skill.requirements:
+                if req['type'] == 'level' and player.level < req['value']:
+                    reqs_met = False
+                    break
+                if req['type'] == 'skill' and req['id'] not in player.unlocked_skills:
+                    reqs_met = False
+                    break
+
+            if reqs_met:
+                available.append(skill)
+        return available
+
+    def unlock_skill(self, player, skill_id):
+        if skill_id not in self.skills:
+            return "Skill not found."
+
+        skill = self.skills[skill_id]
+
+        if skill_id in player.unlocked_skills:
+            return "You have already unlocked this skill."
+
+        if player.skill_points < skill.cost:
+            return "You don't have enough skill points."
+
+        # Check requirements again for safety
+        for req in skill.requirements:
+            if req['type'] == 'level' and player.level < req['value']:
+                return f"You do not meet the level requirement of {req['value']}."
+            if req['type'] == 'skill' and req['id'] not in player.unlocked_skills:
+                required_skill = self.skills.get(req['id'])
+                return f"You need to unlock '{required_skill.name if required_skill else req['id']}' first."
+
+        # All checks passed, unlock the skill
+        player.skill_points -= skill.cost
+        player.unlocked_skills.append(skill_id)
+
+        # Apply the effect
+        if skill.skill_type == 'passive':
+            if 'stat_mod' in skill.effect:
+                for stat, value in skill.effect['stat_mod'].items():
+                    current_value = getattr(player, stat, 0)
+                    setattr(player, stat, current_value + value)
+        elif skill.skill_type == 'active':
+            if 'combat_ability' in skill.effect:
+                player.active_abilities.append(ActiveAbility(skill))
+
+        return f"You have unlocked: {skill.name}!"
+
 import random
 import copy
 import collections
@@ -395,6 +478,16 @@ def get_available_actions(player, game_mode, menus):
             action = {
                 "text": f"Go {c_exit.direction} -> {c_exit.destination.name}",
                 "command": f"go {c_exit.direction}",
+            }
+            actions.append(action)
+
+    # Add active abilities to combat menu
+    if game_mode == "combat":
+        for ability in player.active_abilities:
+            cooldown_text = f" (CD: {ability.cooldown})" if ability.cooldown > 0 else ""
+            action = {
+                "text": f"Use Ability: {ability.name}{cooldown_text}",
+                "command": f"ability {ability.id}"
             }
             actions.append(action)
 
@@ -551,7 +644,8 @@ def save_game(player):
         "xp": player.xp,
         "xp_to_next_level": player.xp_to_next_level,
         "skill_points": player.skill_points,
-        "critical_chance": player.critical_chance
+        "critical_chance": player.critical_chance,
+        "unlocked_skills": player.unlocked_skills
     }
     with open("save_data.json", 'w') as f:
         json.dump(save_data, f, indent=2)
@@ -581,6 +675,15 @@ def load_player_from_save(save_data, all_locations, all_items):
     player.xp_to_next_level = save_data.get("xp_to_next_level", 100)
     player.skill_points = save_data.get("skill_points", 0)
     player.critical_chance = save_data.get("critical_chance", 0.0)
+    player.unlocked_skills = save_data.get("unlocked_skills", [])
+
+    # Re-initialize active abilities from unlocked skills
+    skill_tree_manager = SkillTreeManager(load_game_data("game_data.json").get("skills", {}))
+    for skill_id in player.unlocked_skills:
+        skill = skill_tree_manager.skills.get(skill_id)
+        if skill and skill.skill_type == 'active':
+            player.active_abilities.append(ActiveAbility(skill))
+
     return player
 
 class AsciiMap:
@@ -722,6 +825,7 @@ def main():
     game_data = load_game_data("game_data.json")
     # We need all the world data regardless of new game or load
     _, menus, all_locations, all_items, all_monsters = load_world_from_data(game_data)
+    skill_tree_manager = SkillTreeManager(game_data.get("skills", {}))
 
     player = None
     if os.path.exists("save_data.json"):
@@ -757,6 +861,55 @@ def main():
                 message = level_up_manager.present_levelup_choices(player)
             game_mode = previous_game_mode
             continue
+
+        if game_mode == "skills_menu":
+            message = "You contemplate your skills."
+            # For simplicity, we'll create a temporary menu here.
+            # A more robust solution might involve JSON-defined menus for this.
+            clear_screen()
+            print(f"--- Skill Tree --- (Skill Points: {player.skill_points})\n")
+
+            unlocked_skills = [skill_tree_manager.skills[skill_id] for skill_id in player.unlocked_skills]
+            available_skills = skill_tree_manager.get_available_skills(player)
+
+            print("--- Unlocked Skills ---")
+            if not unlocked_skills:
+                print("None")
+            else:
+                for skill in unlocked_skills:
+                    print(f"- {skill.name}: {skill.description}")
+
+            print("\n--- Available Skills ---")
+            if not available_skills:
+                print("None")
+            else:
+                for i, skill in enumerate(available_skills):
+                    req_str = ", ".join([f"{req['type']} {req.get('value', '') or req.get('id', '')}" for req in skill.requirements])
+                    print(f"  {i + 1}. {skill.name} (Cost: {skill.cost}) - {skill.description} [Req: {req_str or 'None'}]")
+
+            print("\n--------------------")
+            print("Enter the number of a skill to unlock it, or 'exit' to return.")
+            choice = input("> ")
+
+            if choice.lower() == 'exit':
+                game_mode = "explore"
+                message = "You return to your senses."
+                continue
+
+            try:
+                choice_index = int(choice) - 1
+                if 0 <= choice_index < len(available_skills):
+                    skill_to_unlock = available_skills[choice_index]
+                    message = skill_tree_manager.unlock_skill(player, skill_to_unlock.id)
+                else:
+                    message = "Invalid skill number."
+            except ValueError:
+                message = "Invalid input."
+
+            # After action, stay in the skills menu
+            game_mode = "skills_menu"
+            continue
+
 
         if game_mode == "explore" and player.current_location.monsters:
             game_mode = "combat"
@@ -797,7 +950,11 @@ def main():
             elif verb == "map":
                 mapper = AsciiMap(all_locations, player)
                 message = mapper.generate()
-                player_turn_taken = False # Viewing the map shouldn't take a turn
+                player_turn_taken = False
+            elif verb == "skills":
+                game_mode = "skills_menu"
+                player_turn_taken = False
+                continue
             elif verb == "go":
                 direction = parts[1]
                 if player.move(direction):
@@ -889,6 +1046,26 @@ def main():
                     player_turn_taken = True
                 else:
                     message = "That monster isn't here."
+
+            elif verb == "ability":
+                ability_id = parts[1]
+                ability = next((a for a in player.active_abilities if a.id == ability_id), None)
+                if not ability:
+                    message = "You don't have that ability."
+                elif ability.cooldown > 0:
+                    message = f"{ability.name} is on cooldown for {ability.cooldown} more turns."
+                else:
+                    target = select_from_menu(f"\nUse {ability.name} on which enemy?", active_monsters)
+                    if target:
+                        damage_bonus = ability.effect['combat_ability'].get('damage_bonus', 0)
+                        total_damage = player.attack_power + damage_bonus
+                        target.hp -= total_damage
+                        ability.cooldown = ability.max_cooldown
+                        message = f"You use {ability.name} on {target.name}, dealing {total_damage} damage!"
+                        player_turn_taken = True
+                    else:
+                        message = "You decided not to use the ability."
+
 
             elif verb == "use":
                 item_id = parts[1]
@@ -1026,6 +1203,11 @@ def main():
                     for effect in effects_to_remove:
                         del player.status_effects[effect]
                         message += f"\nThe effect of {effect.replace('_', ' ')} has worn off."
+
+                # Tick down ability cooldowns
+                for ability in player.active_abilities:
+                    if ability.cooldown > 0:
+                        ability.cooldown -= 1
 
     if not player.is_alive():
         print(f"\n{message}")

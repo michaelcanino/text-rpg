@@ -279,6 +279,7 @@
       { "text": "Look around", "command": "look" },
       { "text": "View inventory", "command": "inventory" },
       { "text": "View map", "command": "map" },
+      { "text": "View skills", "command": "skills" },
       { "text": "Go {direction} -> {destination.name}", "command": "go {direction}", "iterate": "location.exits" },
       { "text": "Talk to {npc.name}", "command": "talk {npc.id}", "iterate": "location.npcs" },
       { "text": "Get {item.name}", "command": "get {item.id}", "iterate": "location.items" },
@@ -301,35 +302,43 @@
     }
   },
   "skills": {
-    "power_attack": {
-      "id": "power_attack",
-      "name": "Power Attack",
-      "type": "active",
+    "toughness_1": {
+      "name": "Toughness I",
+      "description": "Increases maximum HP by 15.",
+      "type": "passive",
       "cost": 1,
       "requirements": [],
-      "description": "Heavy strike that deals +5 damage. 2-turn cooldown.",
       "effect": {
-        "combat_ability": {"name":"power_attack","damage_bonus":5,"cooldown":2}
+        "stat_mod": { "max_hp": 15 }
       }
     },
-    "toughness": {
-      "id": "toughness",
-      "name": "Toughness",
-      "type": "passive",
+    "power_strike_1": {
+      "name": "Power Strike",
+      "description": "A powerful blow that deals bonus damage.",
+      "type": "active",
       "cost": 1,
-      "requirements": [],
-      "description": "Increases maximum health by 5.",
-      "effect": {"stat_mod": {"max_hp": 5}}
+      "requirements": [
+        { "type": "level", "value": 2 }
+      ],
+      "effect": {
+        "combat_ability": {
+          "name": "Power Strike",
+          "damage_bonus": 5,
+          "cooldown": 3
+        }
+      }
     },
-    "quick_reflexes": {
-      "id": "quick_reflexes",
-      "name": "Quick Reflexes",
-      "type": "passive",
-      "cost": 1,
-      "requirements": [],
-      "description": "Grants +10% dodge chance.",
-      "effect": {"stat_mod": {"dodge_chance_percent": 10}}
+    "advanced_strength": {
+        "name": "Advanced Strength",
+        "description": "Further increases your Attack Power.",
+        "type": "passive",
+        "cost": 1,
+        "requirements": [
+            { "type": "skill", "id": "power_strike_1" }
+        ],
+        "effect": {
+            "stat_mod": { "attack_power": 3 }
+        }
     }
   }
-
 }
