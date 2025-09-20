@@ -670,147 +670,20 @@ def main():
                                 player.quests[quest_id_to_give]['state'] = 'active'
                                 message += f"\n\n  New Quest: {quest_template['name']}"
 
-                        # Check if this dialogue gives items (and only if the quest was just given)
-                        items_to_give = dialogue_to_use.get("gives_items")
-                        if quest_id_to_give and items_to_give and player.quests.get(quest_id_to_give, {}).get('state') == 'active':
-                            # To prevent re-giving, we can check if the quest state was not 'active' before this conversation
-                            # A simple way is to check if the quest ID is in the player's log. If not, give items.
-                            # Since we just added it, this logic works for the first time only.
-                            given_items_names = []
-                            for item_id_to_give in items_to_give:
-                                item_proto = all_items.get(item_id_to_give)
-                                if item_proto:
-                                    player.inventory.append(copy.deepcopy(item_proto))
-                                    given_items_names.append(item_proto.name)
+                                # Check if this dialogue gives items (and only if the quest was just given)
+                                items_to_give = dialogue_to_use.get("gives_items")
+                                if items_to_give:
+                                    given_items_names = []
+                                    for item_id_to_give in items_to_give:
+                                        item_proto = all_items.get(item_id_to_give)
+                                        if item_proto:
+                                            player.inventory.append(copy.deepcopy(item_proto))
+                                            given_items_names.append(item_proto.name)
 
-                            if given_items_names:
-                                message += f"\n  You received: {', '.join(given_items_names)}!"
-                            # To ensure items are only given once, we can clear the list from the NPC instance
-                            dialogue_to_use["gives_items"] = []
-                npc_id = parts[1]
-                npc = next((n for n in player.current_location.npcs if n.id == npc_id), None)
-                if not npc:
-                    message = "There is no one here by that name."
-                else:
-                    dialogue_to_use = None
-                    # Find the first dialogue entry whose conditions are met
-                    for dialogue_entry in npc.dialogue:
-                        if player.check_conditions(dialogue_entry.get('conditions', [])):
-                            dialogue_to_use = dialogue_entry
-                            break
-
-                    if not dialogue_to_use:
-                        message = f"{npc.name} has nothing to say to you right now."
-                    else:
-                        message = f'**{npc.name} says:** "{dialogue_to_use["text"]}"'
-
-                        # Check if this dialogue gives a quest
-                        quest_id_to_give = dialogue_to_use.get("gives_quest_id")
-                        if quest_id_to_give and quest_id_to_give not in player.quests:
-                            # Get quest template from the main game data
-                            quest_template = game_data["quests"].get(quest_id_to_give)
-                            if quest_template:
-                                player.quests[quest_id_to_give] = copy.deepcopy(quest_template)
-                                player.quests[quest_id_to_give]['state'] = 'active'
-                                message += f"\n\n  New Quest: {quest_template['name']}"
-
-                        # Check if this dialogue gives items
-                        items_to_give = dialogue_to_use.get("gives_items")
-                        if items_to_give:
-                            # A simple way is to check if the quest ID is in the player's log. If not, give items.
-                            # Since we just added it, this logic works for the first time only.
-                            given_items_names = []
-                            for item_id_to_give in items_to_give:
-                                item_proto = all_items.get(item_id_to_give)
-                                if item_proto:
-                                    # Create a unique copy for each potion
-                                    player.inventory.append(copy.deepcopy(item_proto))
-                                    given_items_names.append(item_proto.name)
-
-                            if given_items_names:
-                                message += f"\n  You received: {', '.join(given_items_names)}!"
-                            # To ensure items are only given once, we can clear the list from the NPC instance
-                            # This modifies the in-memory object for this game session
-                            dialogue_to_use["gives_items"] = []
-                npc_id = parts[1]
-                npc = next((n for n in player.current_location.npcs if n.id == npc_id), None)
-                if not npc:
-                    message = "There is no one here by that name."
-                else:
-                    dialogue_to_use = None
-                    # Find the first dialogue entry whose conditions are met
-                    for dialogue_entry in npc.dialogue:
-                        if player.check_conditions(dialogue_entry.get('conditions', [])):
-                            dialogue_to_use = dialogue_entry
-                            break
-
-                    if not dialogue_to_use:
-                        message = f"{npc.name} has nothing to say to you right now."
-                    else:
-                        message = f'**{npc.name} says:** "{dialogue_to_use["text"]}"'
-
-                        # Check if this dialogue gives a quest
-                        quest_id_to_give = dialogue_to_use.get("gives_quest_id")
-                        if quest_id_to_give and quest_id_to_give not in player.quests:
-                            # Get quest template from the main game data
-                            quest_template = game_data["quests"].get(quest_id_to_give)
-                            if quest_template:
-                                player.quests[quest_id_to_give] = copy.deepcopy(quest_template)
-                                player.quests[quest_id_to_give]['state'] = 'active'
-                                message += f"\n\n  New Quest: {quest_template['name']}"
-
-                        # Check if this dialogue gives items (and only if the quest was just given)
-                        items_to_give = dialogue_to_use.get("gives_items")
-                        if quest_id_to_give and items_to_give:
-                            # To prevent re-giving, we can check if the quest state was not 'active' before this conversation
-                            # A simple way is to check if the quest ID is in the player's log. If not, give items.
-                            # Since we just added it, this logic works for the first time only.
-                            given_items_names = []
-                            for item_id_to_give in items_to_give:
-                                # A simple check to avoid giving the same item twice if the player somehow already has it
-                                if not any(p_item.id == item_id_to_give for p_item in player.inventory):
-                                    item_proto = all_items.get(item_id_to_give)
-                                    if item_proto:
-                                        player.inventory.append(copy.deepcopy(item_proto))
-                                        given_items_names.append(item_proto.name)
-
-                            if given_items_names:
-                                message += f"\n  You received: {', '.join(given_items_names)}!"
-                            # To ensure items are only given once, we can clear the list from the NPC instance
-                            dialogue_to_use["gives_items"] = []
-                npc_id = parts[1]
-                npc = next((n for n in player.current_location.npcs if n.id == npc_id), None)
-                if npc:
-                    # First, handle item giving
-                    if npc.gives_items_on_talk:
-                        given_items = []
-                        for item_id_to_give in npc.gives_items_on_talk:
-                            if not any(p_item.id == item_id_to_give for p_item in player.inventory):
-                                item_proto = all_items.get(item_id_to_give)
-                                if item_proto:
-                                    player.inventory.append(copy.deepcopy(item_proto))
-                                    given_items.append(item_proto.name)
-                        if given_items:
-                            message += f"You received: {', '.join(given_items)}!\n"
-                        npc.gives_items_on_talk = [] # Clear after giving
-
-                    # Then, handle dialogue
-                    dialogue_text = ""
-                    if isinstance(npc.dialogue, list):
-                        for dialogue_entry in npc.dialogue:
-                            if player.check_conditions(dialogue_entry.get('conditions', [])):
-                                dialogue_text = dialogue_entry["text"]
-                                break
-                        else:
-                            dialogue_text = f"{npc.name} has nothing to say to you right now."
-                    elif isinstance(npc.dialogue, str):
-                        dialogue_text = npc.dialogue
-                    else:
-                        dialogue_text = f"{npc.name} has nothing to say."
-
-                    message += f'**{npc.name} says:** "{dialogue_text}"'
-                else:
-                    message = "There is no one here by that name."
+                                    if given_items_names:
+                                        message += f"\n  You received: {', '.join(given_items_names)}!"
+                                    # To ensure items are only given once, we can clear the list from the NPC instance
+                                    dialogue_to_use["gives_items"] = []
 
             elif verb == "use":
                 item_id = parts[1]
