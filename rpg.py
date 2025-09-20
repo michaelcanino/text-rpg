@@ -146,8 +146,9 @@ class VolcanicLocation(WildernessLocation):
     pass
 
 class Player(Character):
-    def __init__(self, id, name, current_location, hp=20, attack_power=5):
+    def __init__(self, id, name, current_location, hp=20, max_hp=20, attack_power=5):
         super().__init__(id, name, hp, attack_power)
+        self.max_hp = max_hp
         self.current_location = current_location
         self.previous_location = current_location
         self.status_effects = {}
@@ -156,6 +157,8 @@ class Player(Character):
         self.level = 1
         self.xp = 0
         self.xp_to_next_level = 100
+        self.skill_points = 0
+        self.critical_chance = 0.0 # Represented as a float, e.g., 0.05 for 5%
 
     def move(self, direction):
         moved = False
@@ -201,23 +204,78 @@ class Player(Character):
 
     def add_xp(self, amount):
         self.xp += amount
+        leveled_up = False
         message = f"You gain {amount} XP."
-        if self.xp >= self.xp_to_next_level:
-            message += "\n" + self.level_up()
-        return message
+        while self.xp >= self.xp_to_next_level:
+            leveled_up = self.level_up()
+            message += f"\n**LEVEL UP!** You are now level {self.level}!"
+        return message, leveled_up
 
     def level_up(self):
         self.level += 1
         self.xp -= self.xp_to_next_level
         self.xp_to_next_level = int(self.xp_to_next_level * 1.5)
         self.max_hp += 5
-        self.hp = self.max_hp
         self.attack_power += 1
-        return f"**LEVEL UP!** You are now level {self.level}!"
+        self.skill_points += 1
+        self.hp = self.max_hp # Fully heal on level up
+        return True # Signal that a level up occurred
 
 import os
 import platform
 import json
+
+
+class LevelUpChoice:
+    def __init__(self, id, text, apply_effect):
+        self.id = id
+        self.name = text # Use 'name' for display in menus
+        self.text = text
+        self.apply_effect = apply_effect
+
+class LevelUpManager:
+    def __init__(self):
+        pass
+
+    def _get_levelup_choices(self, player):
+        choices = [
+            LevelUpChoice(
+                id="hp",
+                text="Increase Max HP by 10",
+                apply_effect=lambda p: setattr(p, 'max_hp', p.max_hp + 10)
+            ),
+            LevelUpChoice(
+                id="attack",
+                text="Increase Attack Power by 2",
+                apply_effect=lambda p: setattr(p, 'attack_power', p.attack_power + 2)
+            ),
+            LevelUpChoice(
+                id="crit",
+                text="Increase Critical Chance by 5%",
+                apply_effect=lambda p: setattr(p, 'critical_chance', p.critical_chance + 0.05)
+            )
+        ]
+        return choices
+
+    def present_levelup_choices(self, player):
+        level_up_message = f"You are now level {player.level}! You have {player.skill_points} skill point(s)."
+
+        clear_screen()
+        print("=" * 50)
+        print(f"| {player.name:<10} | Lvl: {player.level:<2} | HP: {player.hp:<3}/{player.max_hp:<3} | XP: {player.xp:<4}/{player.xp_to_next_level:<4} |")
+        print(f"| Location: {player.current_location.name:<37} |")
+        print("=" * 50)
+        print(f"\n{level_up_message}\n")
+
+        level_up_choices = self._get_levelup_choices(player)
+        chosen_upgrade = select_from_menu("Choose your upgrade:", level_up_choices)
+
+        if chosen_upgrade:
+            chosen_upgrade.apply_effect(player)
+            player.skill_points -= 1
+            return f"You chose: {chosen_upgrade.text}. Your power grows!"
+        else:
+            return "You decided to save your skill point for later."
 import random
 import copy
 import collections
@@ -465,7 +523,12 @@ def load_world_from_data(game_data):
     start_location = all_locations[player_data["start_location_id"]]
     inventory = [all_items[item_id] for item_id in player_data.get("inventory", [])]
     player = Player(
-        "player", player_data["name"], start_location, player_data["hp"], player_data["attack_power"]
+        "player",
+        player_data["name"],
+        start_location,
+        player_data["hp"],
+        player_data.get("max_hp", player_data["hp"]),
+        player_data["attack_power"]
     )
     player.inventory = inventory
     player.quests = player_data.get("quests", {})
@@ -486,7 +549,9 @@ def save_game(player):
         "discovered_locations": list(player.discovered_locations),
         "level": player.level,
         "xp": player.xp,
-        "xp_to_next_level": player.xp_to_next_level
+        "xp_to_next_level": player.xp_to_next_level,
+        "skill_points": player.skill_points,
+        "critical_chance": player.critical_chance
     }
     with open("save_data.json", 'w') as f:
         json.dump(save_data, f, indent=2)
@@ -495,20 +560,27 @@ def save_game(player):
 def load_player_from_save(save_data, all_locations, all_items):
     """Creates a player object from save data."""
     start_location = all_locations[save_data["current_location_id"]]
+
+    # Get hp and max_hp, ensuring backward compatibility
+    hp = save_data["hp"]
+    max_hp = save_data.get("max_hp", hp)
+
     player = Player(
         "player",
         save_data["name"],
         start_location,
-        save_data["hp"],
+        hp,
+        max_hp,
         save_data["attack_power"]
     )
     player.inventory = [copy.deepcopy(all_items[item_id]) for item_id in save_data["inventory_ids"]]
-    player.max_hp = save_data.get("max_hp", player.hp)
     player.quests = save_data["quests"]
     player.discovered_locations = set(save_data["discovered_locations"])
     player.level = save_data.get("level", 1)
     player.xp = save_data.get("xp", 0)
     player.xp_to_next_level = save_data.get("xp_to_next_level", 100)
+    player.skill_points = save_data.get("skill_points", 0)
+    player.critical_chance = save_data.get("critical_chance", 0.0)
     return player
 
 class AsciiMap:
@@ -674,10 +746,18 @@ def main():
 
 
     game_mode = "explore"
+    previous_game_mode = "explore"
     message = player.current_location.describe(player)
+    level_up_manager = LevelUpManager()
 
     while player.is_alive():
         # --- State Transition Check ---
+        if game_mode == "level_up":
+            if player.skill_points > 0:
+                message = level_up_manager.present_levelup_choices(player)
+            game_mode = previous_game_mode
+            continue
+
         if game_mode == "explore" and player.current_location.monsters:
             game_mode = "combat"
             monster_names = " and a ".join(m.name for m in player.current_location.monsters)
@@ -861,8 +941,11 @@ def main():
                     unique_item_ids = {'lantern_1', 'amulet_of_seeing_1'}
                     for m in defeated_monsters:
                         message += f"\nYou have defeated the {m.name}!"
-                        xp_message = player.add_xp(m.xp_reward)
+                        xp_message, leveled_up = player.add_xp(m.xp_reward)
                         message += f"\n  {xp_message}"
+                        if leveled_up:
+                            previous_game_mode = game_mode
+                            game_mode = "level_up"
 
                         # Check for quest completion
                         if m.completes_quest_id and m.completes_quest_id in player.quests:
