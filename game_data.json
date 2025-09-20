@@ -299,5 +299,37 @@
       "description": "The Sunken Swamp is overrun with dangerous creatures. Clear them out.",
       "state": "not_started"
     }
+  },
+  "skills": {
+    "power_attack": {
+      "id": "power_attack",
+      "name": "Power Attack",
+      "type": "active",
+      "cost": 1,
+      "requirements": [],
+      "description": "Heavy strike that deals +5 damage. 2-turn cooldown.",
+      "effect": {
+        "combat_ability": {"name":"power_attack","damage_bonus":5,"cooldown":2}
+      }
+    },
+    "toughness": {
+      "id": "toughness",
+      "name": "Toughness",
+      "type": "passive",
+      "cost": 1,
+      "requirements": [],
+      "description": "Increases maximum health by 5.",
+      "effect": {"stat_mod": {"max_hp": 5}}
+    },
+    "quick_reflexes": {
+      "id": "quick_reflexes",
+      "name": "Quick Reflexes",
+      "type": "passive",
+      "cost": 1,
+      "requirements": [],
+      "description": "Grants +10% dodge chance.",
+      "effect": {"stat_mod": {"dodge_chance_percent": 10}}
+    }
   }
+
 }
