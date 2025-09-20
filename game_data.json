@@ -12,7 +12,7 @@
       "name": "Oakhaven",
       "description": "A peaceful village nestled in a clearing. The smell of fresh bread fills the air.",
       "exits": { "north": "whispering_woods" },
-      "npc_ids": ["old_man_willow"],
+      "npc_ids": ["old_man_willow", "sister_elira"],
       "monster_ids": [],
       "item_ids": []
     },
@@ -103,6 +103,18 @@
         }
       ],
       "hp": 10,
+      "attack_power": 0
+    },
+    "sister_elira": {
+      "name": "Sister Elira",
+      "dialogue": [
+        {
+          "conditions": [],
+          "text": "You look weary, let me heal your wounds."
+        }
+      ],
+      "heals_player": true,
+      "hp": 15,
       "attack_power": 0
     }
   },

@@ -11,10 +11,11 @@ class Character:
         return self.hp > 0
 
 class NPC(Character):
-    def __init__(self, id, name, dialogue, hp=0, attack_power=0, inventory=None, gives_items_on_talk=None):
+    def __init__(self, id, name, dialogue, hp=0, attack_power=0, inventory=None, gives_items_on_talk=None, heals_player=False):
         super().__init__(id, name, hp, attack_power, inventory)
         self.dialogue = dialogue
         self.gives_items_on_talk = gives_items_on_talk if gives_items_on_talk is not None else []
+        self.heals_player = heals_player
 
 class Monster(Character):
     def __init__(self, id, name, monster_type, hp, attack_power, drops=None, completes_quest_id=None, xp_reward=0):
@@ -40,8 +41,14 @@ class Potion(Item):
         self.heal_amount = heal_amount
 
     def use(self, target):
-        target.hp += self.heal_amount
-        return f"{target.name} uses the {self.name} and heals for {self.heal_amount} HP."
+        heal_amount = self.heal_amount
+        old_hp = target.hp
+        target.hp = min(target.hp + heal_amount, target.max_hp)
+        healed_for = target.hp - old_hp
+        if healed_for > 0:
+            return f"{target.name} uses the {self.name} and heals for {healed_for} HP. (HP: {target.hp}/{target.max_hp})"
+        else:
+            return f"{target.name} uses the {self.name}, but their health is already full."
 
 class EffectPotion(Item):
     def __init__(self, id, name, description, value, effect, duration):
@@ -370,7 +377,8 @@ def load_world_from_data(game_data):
         all_npcs[npc_id] = NPC(
             npc_id, npc_data["name"], npc_data.get("dialogue", ""),
             npc_data["hp"], npc_data["attack_power"],
-            gives_items_on_talk=npc_data.get("gives_items_on_talk")
+            gives_items_on_talk=npc_data.get("gives_items_on_talk"),
+            heals_player=npc_data.get("heals_player", False)
         )
 
     all_locations = {}
@@ -767,6 +775,14 @@ def main():
                                         message += f"\n  You received: {', '.join(given_items_names)}!"
                                     # To ensure items are only given once, we can clear the list from the NPC instance
                                     dialogue_to_use["gives_items"] = []
+
+                        # Check if this NPC is a healer
+                        if npc and getattr(npc, 'heals_player', False):
+                            if player.hp < player.max_hp:
+                                player.hp = player.max_hp
+                                message += "\n\nYour wounds have been fully healed."
+                            else:
+                                message += "\n\nYou are already at full health."
 
             elif verb == "use":
                 item_id = parts[1]
