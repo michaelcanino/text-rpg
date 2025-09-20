@@ -112,20 +112,23 @@
       "monster_type": "Goblin",
       "hp": 10,
       "attack_power": 3,
-      "drop_ids": ["rusty_trinket_1"]
+      "drop_ids": ["rusty_trinket_1"],
+      "xp_reward": 10
     },
     "goblin_chief_1": {
       "name": "Goblin Chief",
       "monster_type": "Goblin",
       "hp": 18,
       "attack_power": 5,
-      "drop_ids": ["healing_potion_3"]
+      "drop_ids": ["healing_potion_3"],
+      "xp_reward": 25
     },
     "bog_lurker_1": {
       "name": "Bog Lurker",
       "monster_type": "Beast",
       "hp": 15,
-      "attack_power": 4
+      "attack_power": 4,
+      "xp_reward": 15
     },
     "swamp_serpent_1": {
       "name": "Swamp Serpent",
@@ -133,21 +136,24 @@
       "hp": 15,
       "attack_power": 5,
       "drop_ids": ["amulet_of_seeing_1"],
-      "completes_quest_id": "quest_cleared_swamp"
+      "completes_quest_id": "quest_cleared_swamp",
+      "xp_reward": 50
     },
     "fire_elemental_1": {
       "name": "Fire Elemental",
       "monster_type": "Elemental",
       "hp": 25,
       "attack_power": 7,
-      "drop_ids": ["scorched_tablet_1"]
+      "drop_ids": ["scorched_tablet_1"],
+      "xp_reward": 40
     },
     "obsidian_golem_1": {
       "name": "Obsidian Golem",
       "monster_type": "Construct",
       "hp": 35,
       "attack_power": 10,
-      "drop_ids": ["obsidian_fragment_1"]
+      "drop_ids": ["obsidian_fragment_1"],
+      "xp_reward": 60
     }
   },
   "items": {
