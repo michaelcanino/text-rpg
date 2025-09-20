@@ -1,0 +1,286 @@
+{
+  "player": {
+    "name": "Hero",
+    "hp": 20,
+    "attack_power": 5,
+    "start_location_id": "oakhaven",
+    "inventory": ["magic_scroll_1"]
+  },
+  "locations": {
+    "oakhaven": {
+      "location_type": "City",
+      "name": "Oakhaven",
+      "description": "A peaceful village nestled in a clearing. The smell of fresh bread fills the air.",
+      "exits": { "north": "whispering_woods" },
+      "npc_ids": ["old_man_willow"],
+      "monster_ids": [],
+      "item_ids": []
+    },
+    "whispering_woods": {
+      "location_type": "Wilderness",
+      "name": "Whispering Woods",
+      "description": "A dense forest where the trees seem to whisper secrets. Claw marks on the trees point westward. An old traveler's warning echoes in your mind: 'Beware the Ashen Peaks. Without protection, the fire will scorch you alive.'",
+      "spawn_chance": 0.5,
+      "exits": { "south": "oakhaven", "east": "sunken_swamp", "north": "ashen_peaks", "west": "goblin_cave" },
+      "npc_ids": [],
+      "monster_ids": ["goblin_1"],
+      "item_ids": []
+    },
+    "goblin_cave": {
+      "location_type": "Dungeon",
+      "name": "Goblin Cave",
+      "description": "The Goblin Cave is damp and dark. To the east, a faint shimmer glows along the wall...",
+      "hazard_description": "A foul stench hangs in the air.",
+      "exits": { "east": "whispering_woods" },
+      "conditional_exits": [
+        {
+          "direction": "northeast",
+          "destination_id": "hidden_shrine",
+          "description": "A faint shimmering in the eastern wall hints at a hidden passage.",
+          "conditions": [
+            { "type": "has_item", "item_id": "amulet_of_seeing_1" }
+          ]
+        }
+      ],
+      "npc_ids": [],
+      "monster_ids": ["goblin_chief_1"],
+      "item_ids": ["fireproof_armor_1"]
+    },
+    "hidden_shrine": {
+      "location_type": "Dungeon",
+      "name": "Hidden Shrine",
+      "description": "A small, circular chamber made of polished white stone. Intricate carvings cover the walls, depicting celestial scenes. A single pedestal stands in the center.",
+      "exits": { "west": "goblin_cave" },
+      "npc_ids": [],
+      "monster_ids": [],
+      "item_ids": ["ancient_tome_1"]
+    },
+    "ashen_peaks": {
+      "location_type": "Volcanic",
+      "name": "The Ashen Peaks",
+      "description": "A desolate landscape of black rock and rivers of magma. The air is thick with smoke and ash, and the ground is hot to the touch.",
+      "spawn_chance": 0.8,
+      "exits": { "south": "whispering_woods" },
+      "npc_ids": [],
+      "monster_ids": ["fire_elemental_1", "obsidian_golem_1"],
+      "item_ids": []
+    },
+    "sunken_swamp": {
+      "location_type": "Swamp",
+      "name": "The Sunken Swamp",
+      "description": "Ancient, moss-covered ruins jut out from murky water, a testament to a long-forgotten civilization. The air is thick with the smell of decay.",
+      "hidden_description": "A thick, cloying fog hangs heavy in the air, obscuring the details of this murky swamp. It's too dark to see clearly. You'll need a light source to explore properly.",
+      "spawn_chance": 0.7,
+      "exits": { "west": "whispering_woods" },
+      "npc_ids": [],
+      "monster_ids": ["bog_lurker_1"],
+      "item_ids": ["waterlogged_chest_1"],
+      "spawns_on_defeat": {
+        "bog_lurker_1": {
+          "monster_id_to_spawn": "swamp_serpent_1",
+          "message": "The waters churn violently... the Swamp Serpent emerges!"
+        }
+      }
+    }
+  },
+  "npcs": {
+    "old_man_willow": {
+      "name": "Old Man Willow",
+      "dialogue": [
+        {
+          "conditions": [{ "type": "quest_completed", "quest_id": "quest_cleared_swamp" }],
+          "text": "The swamp grows quieter… thanks to you."
+        },
+        {
+          "conditions": [{ "type": "quest_active", "quest_id": "quest_cleared_swamp" }],
+          "text": "The swamp is a dangerous place. Be careful out there."
+        },
+        {
+          "conditions": [],
+          "text": "The swamp to the east has grown foul. A great serpent and its minions have taken root, poisoning the water. If you could clear them out, you'd be doing this land a great service. Please, take this to help you.",
+          "gives_quest_id": "quest_cleared_swamp",
+          "gives_items": ["lantern_1", "healing_potion_1", "healing_potion_2"]
+        }
+      ],
+      "hp": 10,
+      "attack_power": 0
+    }
+  },
+  "monsters": {
+    "goblin_1": {
+      "name": "Goblin",
+      "monster_type": "Goblin",
+      "hp": 10,
+      "attack_power": 3,
+      "drop_ids": ["rusty_trinket_1"]
+    },
+    "goblin_chief_1": {
+      "name": "Goblin Chief",
+      "monster_type": "Goblin",
+      "hp": 18,
+      "attack_power": 5,
+      "drop_ids": ["healing_potion_3"]
+    },
+    "bog_lurker_1": {
+      "name": "Bog Lurker",
+      "monster_type": "Beast",
+      "hp": 15,
+      "attack_power": 4
+    },
+    "swamp_serpent_1": {
+      "name": "Swamp Serpent",
+      "monster_type": "Beast",
+      "hp": 15,
+      "attack_power": 5,
+      "drop_ids": ["amulet_of_seeing_1"],
+      "completes_quest_id": "quest_cleared_swamp"
+    },
+    "fire_elemental_1": {
+      "name": "Fire Elemental",
+      "monster_type": "Elemental",
+      "hp": 25,
+      "attack_power": 7,
+      "drop_ids": ["scorched_tablet_1"]
+    },
+    "obsidian_golem_1": {
+      "name": "Obsidian Golem",
+      "monster_type": "Construct",
+      "hp": 35,
+      "attack_power": 10,
+      "drop_ids": ["obsidian_fragment_1"]
+    }
+  },
+  "items": {
+    "healing_potion_1": {
+      "item_type": "Potion",
+      "name": "Healing Potion",
+      "description": "A simple potion that restores 10 health.",
+      "value": 5,
+      "heal_amount": 10
+    },
+    "healing_potion_2": {
+      "item_type": "Potion",
+      "name": "Healing Potion",
+      "description": "A simple potion that restores 10 health.",
+      "value": 5,
+      "heal_amount": 10
+    },
+    "healing_potion_3": {
+      "item_type": "Potion",
+      "name": "Healing Potion",
+      "description": "A simple potion that restores 10 health.",
+      "value": 5,
+      "heal_amount": 10
+    },
+    "herbal_remedy_1": {
+      "item_type": "Potion",
+      "name": "Herbal Remedy",
+      "description": "A pungent herbal remedy that restores a small amount of health.",
+      "value": 8,
+      "heal_amount": 7
+    },
+    "rusty_trinket_1": {
+      "item_type": "Item",
+      "name": "Rusty Trinket",
+      "description": "A small, oddly shaped piece of rusted metal. It might be valuable to someone.",
+      "value": 3
+    },
+    "moldy_potion_1": {
+      "item_type": "Potion",
+      "name": "Moldy Potion",
+      "description": "A foul-smelling potion. Restores 5 health.",
+      "value": 1,
+      "heal_amount": 5
+    },
+    "lantern_1": {
+      "item_type": "Item",
+      "name": "Lantern",
+      "description": "An old lantern that casts a steady light.",
+      "value": 10
+    },
+    "rusted_sword_1": {
+      "item_type": "Item",
+      "name": "Rusted Sword",
+      "description": "A worthless, rusted sword.",
+      "value": 1
+    },
+    "waterlogged_chest_1": {
+      "item_type": "Container",
+      "name": "Waterlogged Chest",
+      "description": "A heavy, waterlogged chest. It seems to be unlocked.",
+      "value": 0,
+      "contained_item_ids": ["rusted_sword_1"]
+    },
+    "magic_scroll_1": {
+      "item_type": "OffensiveItem",
+      "name": "Magic Scroll",
+      "description": "A scroll that unleashes a bolt of energy.",
+      "value": 25,
+      "damage_amount": 10
+    },
+    "scorched_tablet_1": {
+      "item_type": "Item",
+      "name": "Scorched Tablet",
+      "description": "A tablet covered in ancient, scorched carvings. It tells a fragment of the story of a civilization that worshipped the volcano.",
+      "value": 50
+    },
+    "obsidian_fragment_1": {
+      "item_type": "Item",
+      "name": "Obsidian Fragment",
+      "description": "A sharp, black volcanic glass shard.",
+      "value": 20
+    },
+    "fireproof_armor_1": {
+      "item_type": "Item",
+      "name": "Fireproof Armor",
+      "description": "A suit of armor made from strange, heat-resistant scales. It provides protection from extreme heat.",
+      "value": 150
+    },
+    "fire_resistance_potion_1": {
+      "item_type": "EffectPotion",
+      "name": "Fire Resistance Potion",
+      "description": "A potion that grants temporary resistance to fire.",
+      "value": 75,
+      "effect": "fire_resistance",
+      "duration": 5
+    },
+    "amulet_of_seeing_1": {
+      "item_type": "Item",
+      "name": "Amulet of Seeing",
+      "description": "A strange amulet that hums with a faint energy. It seems to reveal things that are hidden.",
+      "value": 200
+    },
+    "ancient_tome_1": {
+      "item_type": "Item",
+      "name": "Ancient Tome",
+      "description": "A heavy book filled with cryptic writings about the world's creation.",
+      "value": 300
+    }
+  },
+  "menus": {
+    "explore": [
+      { "text": "Look around", "command": "look" },
+      { "text": "View inventory", "command": "inventory" },
+      { "text": "View map", "command": "map" },
+      { "text": "Go {direction} -> {destination.name}", "command": "go {direction}", "iterate": "location.exits" },
+      { "text": "Talk to {npc.name}", "command": "talk {npc.id}", "iterate": "location.npcs" },
+      { "text": "Get {item.name}", "command": "get {item.id}", "iterate": "location.items" },
+      { "text": "Use {item.name}", "command": "use {item.id}", "iterate": "player.inventory", "condition": "is_potion" }
+    ],
+    "combat": [
+      { "text": "Attack {monster.name} (HP: {monster.hp}/{monster.max_hp})", "command": "attack {monster.id}", "iterate": "location.monsters" },
+      { "text": "Use {item.name}", "command": "use {item.id}", "iterate": "player.inventory", "condition": "is_usable_in_combat" },
+      { "text": "Retreat from combat", "command": "retreat" }
+    ],
+    "always": [
+      { "text": "Quit game", "command": "quit" }
+    ]
+  },
+  "quests": {
+    "quest_cleared_swamp": {
+      "name": "Clear the Sunken Swamp",
+      "description": "The Sunken Swamp is overrun with dangerous creatures. Clear them out.",
+      "state": "not_started"
+    }
+  }
+}
