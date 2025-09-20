@@ -107,13 +107,12 @@
     },
     "sister_elira": {
       "name": "Sister Elira",
-      "dialogue": [
-        {
-          "conditions": [],
-          "text": "You look weary, let me heal your wounds."
-        }
-      ],
-      "heals_player": true,
+      "dialogue": [],
+      "healing_dialogue": {
+        "default": "The temple is a sanctuary from the chaos outside. May peace find you here.",
+        "pre_heal": "You look weary, let me heal your wounds.",
+        "post_heal": "There, much better. May the light guide your path."
+      },
       "hp": 15,
       "attack_power": 0
     }

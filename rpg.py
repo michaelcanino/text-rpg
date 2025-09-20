@@ -11,11 +11,11 @@ class Character:
         return self.hp > 0
 
 class NPC(Character):
-    def __init__(self, id, name, dialogue, hp=0, attack_power=0, inventory=None, gives_items_on_talk=None, heals_player=False):
+    def __init__(self, id, name, dialogue, hp=0, attack_power=0, inventory=None, gives_items_on_talk=None, healing_dialogue=None):
         super().__init__(id, name, hp, attack_power, inventory)
         self.dialogue = dialogue
         self.gives_items_on_talk = gives_items_on_talk if gives_items_on_talk is not None else []
-        self.heals_player = heals_player
+        self.healing_dialogue = healing_dialogue
 
 class Monster(Character):
     def __init__(self, id, name, monster_type, hp, attack_power, drops=None, completes_quest_id=None, xp_reward=0):
@@ -378,7 +378,7 @@ def load_world_from_data(game_data):
             npc_id, npc_data["name"], npc_data.get("dialogue", ""),
             npc_data["hp"], npc_data["attack_power"],
             gives_items_on_talk=npc_data.get("gives_items_on_talk"),
-            heals_player=npc_data.get("heals_player", False)
+            healing_dialogue=npc_data.get("healing_dialogue")
         )
 
     all_locations = {}
@@ -746,7 +746,15 @@ def main():
                             dialogue_to_use = dialogue_entry
                             break
 
-                    if not dialogue_to_use:
+                    # Handle healing dialogue first if it exists
+                    if npc.healing_dialogue:
+                        if player.hp < player.max_hp:
+                            message = f'**{npc.name} says:** "{npc.healing_dialogue["pre_heal"]}"'
+                            player.hp = player.max_hp
+                            message += f'\n\n**{npc.name} says:** "{npc.healing_dialogue["post_heal"]}"'
+                        else:
+                            message = f'**{npc.name} says:** "{npc.healing_dialogue["default"]}"'
+                    elif not dialogue_to_use:
                         message = f"{npc.name} has nothing to say to you right now."
                     else:
                         message = f'**{npc.name} says:** "{dialogue_to_use["text"]}"'
@@ -775,14 +783,6 @@ def main():
                                         message += f"\n  You received: {', '.join(given_items_names)}!"
                                     # To ensure items are only given once, we can clear the list from the NPC instance
                                     dialogue_to_use["gives_items"] = []
-
-                        # Check if this NPC is a healer
-                        if npc and getattr(npc, 'heals_player', False):
-                            if player.hp < player.max_hp:
-                                player.hp = player.max_hp
-                                message += "\n\nYour wounds have been fully healed."
-                            else:
-                                message += "\n\nYou are already at full health."
 
             elif verb == "use":
                 item_id = parts[1]
