@@ -102,6 +102,7 @@
           "gives_items": ["lantern_1", "healing_potion_1", "healing_potion_2"]
         }
       ],
+      "teaches_skills": ["fireball"],
       "hp": 10,
       "attack_power": 0
     },
@@ -271,7 +272,10 @@
       "item_type": "Item",
       "name": "Ancient Tome",
       "description": "A heavy book filled with cryptic writings about the world's creation.",
-      "value": 300
+      "value": 300,
+      "teaches_skills": [
+        { "skill_id": "advanced_strength", "consume_item": true }
+      ]
     }
   },
   "menus": {
@@ -283,7 +287,7 @@
       { "text": "Go {direction} -> {destination.name}", "command": "go {direction}", "iterate": "location.exits" },
       { "text": "Talk to {npc.name}", "command": "talk {npc.id}", "iterate": "location.npcs" },
       { "text": "Get {item.name}", "command": "get {item.id}", "iterate": "location.items" },
-      { "text": "Use {item.name}", "command": "use {item.id}", "iterate": "player.inventory", "condition": "is_potion" }
+      { "text": "Use {item.name}", "command": "use {item.id}", "iterate": "player.inventory" }
     ],
     "combat": [
       { "text": "Attack {monster.name} (HP: {monster.hp}/{monster.max_hp})", "command": "attack {monster.id}", "iterate": "location.monsters" },

@@ -3,13 +3,51 @@ import copy
 import random
 import json
 
-from models import Player, Potion, Container, OffensiveItem, EffectPotion, VolcanicLocation
+from models import Player, Potion, Container, OffensiveItem, EffectPotion, VolcanicLocation, Item
 from world import load_game_data, load_world_from_data, AsciiMap
 from managers import (
     LevelUpManager, SkillTreeManager, ClassManager,
     save_game, load_player_from_save,
     select_from_menu, display_menu_and_state, get_available_actions, clear_screen
 )
+
+def handle_skill_teaching(player, source, skill_tree_manager, class_manager):
+    """Handles the UI for learning skills from an NPC or item."""
+    teachable_skills = []
+    if not hasattr(source, 'teaches_skills'):
+        return ""
+
+    for skill_info in source.teaches_skills:
+        skill_id = skill_info
+        if isinstance(skill_info, dict):
+            skill_id = skill_info['skill_id']
+
+        can_learn, _ = skill_tree_manager.can_learn_skill(player, skill_id)
+        if can_learn:
+            skill = skill_tree_manager.skills.get(skill_id)
+            if skill:
+                teachable_skills.append(skill)
+
+    if not teachable_skills:
+        return ""
+
+    message = f"\n{source.name} can teach you new skills."
+    chosen_skill = select_from_menu("Which skill would you like to learn?", teachable_skills)
+
+    if chosen_skill:
+        unlock_message = skill_tree_manager.unlock_skill(player, chosen_skill.id, class_manager, free=True)
+        player.recalculate_stats(skill_tree_manager, class_manager)
+
+        # Check for item consumption
+        if isinstance(source, Item):
+             for skill_info in source.teaches_skills:
+                if isinstance(skill_info, dict) and skill_info.get('skill_id') == chosen_skill.id and skill_info.get('consume_item'):
+                    player.inventory.remove(source)
+                    unlock_message += f"\nThe {source.name} crumbles to dust."
+                    break
+
+        return unlock_message
+    return "You decide not to learn any new skills right now."
 
 def handle_class_choice(player, class_manager, skill_tree_manager):
     """Handles the UI and logic for the one-time class choice."""
@@ -242,13 +280,21 @@ def main():
                                         if given_items_names:
                                             message += f"\n  You received: {', '.join(given_items_names)}!"
                                         dialogue_to_use["gives_items"] = []
+
+                    teaching_message = handle_skill_teaching(player, npc, skill_tree_manager, class_manager)
+                    if teaching_message:
+                        message += f"\n{teaching_message}"
             elif verb == "use":
                 item_id = " ".join(parts[1:])
                 item = next((i for i in player.inventory if i.id == item_id), None)
                 if item:
-                    message = item.use(player)
-                    if isinstance(item, (Potion, Container, EffectPotion)):
-                        player.inventory.remove(item)
+                    if item.teaches_skills:
+                        message = handle_skill_teaching(player, item, skill_tree_manager, class_manager)
+                    else:
+                        message = item.use(player)
+                        if isinstance(item, (Potion, Container, EffectPotion)):
+                            if item in player.inventory: # It might have been consumed by the use action
+                                player.inventory.remove(item)
                 else:
                     message = "You don't have that item."
 

@@ -18,11 +18,12 @@ class Character:
         return self.hp > 0
 
 class NPC(Character):
-    def __init__(self, id, name, dialogue, hp=0, attack_power=0, inventory=None, gives_items_on_talk=None, healing_dialogue=None):
+    def __init__(self, id, name, dialogue, hp=0, attack_power=0, inventory=None, gives_items_on_talk=None, healing_dialogue=None, teaches_skills=None):
         super().__init__(id, name, hp, attack_power, inventory)
         self.dialogue = dialogue
         self.gives_items_on_talk = gives_items_on_talk if gives_items_on_talk is not None else []
         self.healing_dialogue = healing_dialogue
+        self.teaches_skills = teaches_skills if teaches_skills is not None else []
 
 class Monster(Character):
     def __init__(self, id, name, monster_type, hp, attack_power, drops=None, completes_quest_id=None, xp_reward=0):
@@ -33,18 +34,19 @@ class Monster(Character):
         self.xp_reward = xp_reward
 
 class Item:
-    def __init__(self, id, name, description, value=0):
+    def __init__(self, id, name, description, value=0, teaches_skills=None):
         self.id = id
         self.name = name
         self.description = description
         self.value = value
+        self.teaches_skills = teaches_skills if teaches_skills is not None else []
 
     def use(self, target):
         return f"You can't use {self.name}."
 
 class Potion(Item):
-    def __init__(self, id, name, description, value, heal_amount):
-        super().__init__(id, name, description, value)
+    def __init__(self, id, name, description, value, heal_amount, **kwargs):
+        super().__init__(id, name, description, value, **kwargs)
         self.heal_amount = heal_amount
 
     def use(self, target):
@@ -58,8 +60,8 @@ class Potion(Item):
             return f"{target.name} uses the {self.name}, but their health is already full."
 
 class EffectPotion(Item):
-    def __init__(self, id, name, description, value, effect, duration):
-        super().__init__(id, name, description, value)
+    def __init__(self, id, name, description, value, effect, duration, **kwargs):
+        super().__init__(id, name, description, value, **kwargs)
         self.effect = effect
         self.duration = duration
 
@@ -68,8 +70,8 @@ class EffectPotion(Item):
         return f"{target.name} uses the {self.name}. You feel a strange energy course through you."
 
 class OffensiveItem(Item):
-    def __init__(self, id, name, description, value, damage_amount):
-        super().__init__(id, name, description, value)
+    def __init__(self, id, name, description, value, damage_amount, **kwargs):
+        super().__init__(id, name, description, value, **kwargs)
         self.damage_amount = damage_amount
 
     def use(self, target):
@@ -77,8 +79,8 @@ class OffensiveItem(Item):
         return f"You use the {self.name} on {target.name}, dealing {self.damage_amount} damage!"
 
 class Container(Item):
-    def __init__(self, id, name, description, value, contained_items=None):
-        super().__init__(id, name, description, value)
+    def __init__(self, id, name, description, value, contained_items=None, **kwargs):
+        super().__init__(id, name, description, value, **kwargs)
         self.contained_items = contained_items if contained_items is not None else []
 
     def use(self, target_player):

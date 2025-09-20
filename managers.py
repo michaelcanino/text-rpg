@@ -106,15 +106,13 @@ class SkillTreeManager:
         if skill_id in player.unlocked_skills:
             return "You have already unlocked this skill."
 
+        can_learn, reason = self.can_learn_skill(player, skill_id)
+        if not can_learn:
+            return reason
+
+        skill = self.skills[skill_id]
         if not free and player.skill_points < skill.cost:
             return "You don't have enough skill points."
-
-        for req in skill.requirements:
-            if req['type'] == 'level' and player.level < req['value']:
-                return f"You do not meet the level requirement of {req['value']}."
-            if req['type'] == 'skill' and req['id'] not in player.unlocked_skills:
-                required_skill = self.skills.get(req['id'])
-                return f"You need to unlock '{required_skill.name if required_skill else req['id']}' first."
 
         if not free:
             player.skill_points -= skill.cost
@@ -124,6 +122,24 @@ class SkillTreeManager:
             player.active_abilities.append(ActiveAbility(skill))
 
         return f"You have unlocked: {skill.name}!"
+
+    def can_learn_skill(self, player, skill_id):
+        if skill_id not in self.skills:
+            return False, "This skill does not exist."
+
+        skill = self.skills[skill_id]
+
+        if skill_id in player.unlocked_skills:
+            return False, "You have already learned this skill."
+
+        for req in skill.requirements:
+            if req['type'] == 'level' and player.level < req['value']:
+                return False, f"You do not meet the level requirement of {req['value']}."
+            if req['type'] == 'skill' and req['id'] not in player.unlocked_skills:
+                required_skill = self.skills.get(req['id'])
+                return False, f"You need to learn '{required_skill.name if required_skill else req['id']}' first."
+
+        return True, None
 
 class ClassManager:
     def __init__(self, classes_data):
@@ -262,8 +278,6 @@ def get_available_actions(player, game_mode, menus, all_locations):
 
             for it in source_list:
                 if "condition" in definition:
-                    if definition["condition"] == "is_potion" and not isinstance(it, (Potion, EffectPotion)):
-                        continue
                     if definition["condition"] == "is_usable_in_combat" and not isinstance(it, (Potion, OffensiveItem, EffectPotion)):
                         continue
 
