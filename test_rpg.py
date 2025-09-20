@@ -1,16 +1,12 @@
 import unittest
 import json
 import os
-import rpg
 from unittest.mock import patch
 
-from rpg import (
-    Player, Potion, NPC,
-    load_game_data, load_world_from_data,
-    SkillTreeManager, ClassManager,
-    save_game, load_player_from_save,
-    handle_class_choice
-)
+from models import Player, Potion, NPC
+from world import load_game_data, load_world_from_data
+from managers import SkillTreeManager, ClassManager, save_game, load_player_from_save
+from main import handle_class_choice
 
 class TestRPGSystem(unittest.TestCase):
 
@@ -21,6 +17,7 @@ class TestRPGSystem(unittest.TestCase):
         self.skill_tree_manager = SkillTreeManager(self.game_data.get("skills", {}))
         self.class_manager = ClassManager(self.game_data.get("classes", {}))
 
+        # Note: We get back menus, all_locations, etc. but we only need some for the tests
         self.player, _, self.all_locations, self.all_items, _ = load_world_from_data(self.game_data)
 
         self.player.current_location = self.all_locations["oakhaven"]
@@ -38,6 +35,7 @@ class TestRPGSystem(unittest.TestCase):
         """Ensure potions cannot heal above max_hp."""
         self.player.max_hp = 50
         self.player.hp = 49
+        # We can instantiate a Potion directly for this test
         potion = Potion("test_potion", "Test Potion", "Desc", 10, 20)
 
         message = potion.use(self.player)
@@ -50,22 +48,21 @@ class TestRPGSystem(unittest.TestCase):
         sister_elira = next((n for n in self.player.current_location.npcs if n.id == "sister_elira"), None)
         self.assertIsNotNone(sister_elira, "Sister Elira not found in Oakhaven")
 
-        # 1. Test dialogue at full health
+        # Test dialogue at full health
         self.player.hp = self.player.max_hp
         message = ""
         if sister_elira.healing_dialogue and self.player.hp >= self.player.max_hp:
             message = sister_elira.healing_dialogue["default"]
         self.assertEqual(message, "The temple is a sanctuary from the chaos outside. May peace find you here.")
 
-        # 2. Test healing when wounded
+        # Test healing when wounded
         self.player.hp = 1
         original_max_hp = self.player.max_hp
 
-        pre_heal_msg = ""
-        post_heal_msg = ""
+        pre_heal_msg, post_heal_msg = "", ""
         if sister_elira.healing_dialogue and self.player.hp < self.player.max_hp:
             pre_heal_msg = sister_elira.healing_dialogue["pre_heal"]
-            self.player.hp = self.player.max_hp
+            self.player.hp = self.player.max_hp  # Simulate healing
             post_heal_msg = sister_elira.healing_dialogue["post_heal"]
 
         self.assertEqual(pre_heal_msg, "You look weary, let me heal your wounds.")
@@ -78,7 +75,7 @@ class TestRPGSystem(unittest.TestCase):
         self.player.recalculate_stats(self.skill_tree_manager, self.class_manager)
         expected_max_hp = self.player.max_hp
 
-        with patch('builtins.print') as mock_print:
+        with patch('builtins.print'):  # Suppress print output from save_game
             save_game(self.player)
 
         self.assertTrue(os.path.exists("save_data.json"))
@@ -91,12 +88,14 @@ class TestRPGSystem(unittest.TestCase):
         self.assertEqual(loaded_player.base_max_hp, self.player.base_max_hp)
         self.assertEqual(loaded_player.max_hp, expected_max_hp)
 
-    @patch('rpg.clear_screen')
-    @patch('rpg.select_from_menu')
+    @patch('main.clear_screen')
+    @patch('main.select_from_menu')
     def test_class_evolution_flow(self, mock_select, mock_clear):
         """Test the entire class evolution process at level 10."""
+        # Mock the menu selection to automatically choose the Knight
         mock_select.return_value = self.class_manager.classes['knight']
 
+        # Level up player to level 10
         self.player.level = 9
         self.player.xp = self.player.xp_to_next_level - 1
         _, _, class_choice_pending = self.player.add_xp(1)
@@ -107,8 +106,10 @@ class TestRPGSystem(unittest.TestCase):
         base_hp_before = self.player.base_max_hp
         base_ap_before = self.player.base_attack_power
 
+        # Handle the class choice
         message = handle_class_choice(self.player, self.class_manager, self.skill_tree_manager)
 
+        # Verify the changes
         self.assertEqual(self.player.class_id, 'knight')
         self.assertIn("You have chosen the path of the Knight!", message)
 
@@ -127,10 +128,13 @@ class TestRPGSystem(unittest.TestCase):
         self.assertEqual(self.player.max_hp, expected_max_hp)
         self.assertEqual(self.player.attack_power, expected_ap)
 
+        # Verify skill availability
         available_skills = self.skill_tree_manager.get_available_skills(self.player, self.class_manager)
         available_skill_ids = [s.id for s in available_skills]
 
+        # At level 10, the Knight should have access to their new skill
         self.assertIn('knights_valor', available_skill_ids)
+        # And should not have access to other classes' skills
         self.assertNotIn('twin_shot', available_skill_ids)
         self.assertNotIn('fireball', available_skill_ids)
 
