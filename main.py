@@ -1,6 +1,7 @@
 import os
 import copy
 import random
+import json
 
 from models import Player, Potion, Container, OffensiveItem, EffectPotion, VolcanicLocation
 from world import load_game_data, load_world_from_data, AsciiMap
@@ -143,7 +144,7 @@ def main():
             monster_names = " and a ".join(m.name for m in player.current_location.monsters)
             message = f"You step into the {player.current_location.name}... {monster_names} block(s) your way!"
 
-        available_actions = get_available_actions(player, game_mode, menus)
+        available_actions = get_available_actions(player, game_mode, menus, all_locations)
         display_menu_and_state(player, message, available_actions, game_mode, class_manager)
 
         choice = input("> ")

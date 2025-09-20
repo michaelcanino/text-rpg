@@ -229,7 +229,7 @@ def display_menu_and_state(player, message, actions, game_mode, class_manager):
         print(f"  {i + 1}. {action['text']}")
     print("-" * 40)
 
-def get_available_actions(player, game_mode, menus):
+def get_available_actions(player, game_mode, menus, all_locations):
     """Generates a list of available actions for the player based on JSON menu definitions."""
     actions = []
     menu_definitions = menus.get(game_mode, []) + menus.get("always", [])
@@ -270,12 +270,15 @@ def get_available_actions(player, game_mode, menus):
                 action = definition.copy()
                 if iterator_key == "location.exits":
                     direction, dest = it
-                    action['text'] = definition["text"].format(direction=direction, destination=dest.name)
+                    action['text'] = definition["text"].format(direction=direction, destination=dest)
                     action['command'] = definition["command"].format(direction=direction)
                 else:
                     # Generic formatter for npc, item, monster, etc.
-                    action['text'] = definition["text"].format(**{iterator_key.split('.')[-1][:-1]: it})
-                    action['command'] = definition["command"].format(**{iterator_key.split('.')[-1][:-1]: it})
+                    key_name = iterator_key.split('.')[-1][:-1]
+                    if iterator_key == "player.inventory":
+                        key_name = "item"
+                    action['text'] = definition["text"].format(**{key_name: it})
+                    action['command'] = definition["command"].format(**{key_name: it})
 
                 actions.append(action)
 
