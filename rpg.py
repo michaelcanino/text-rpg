@@ -17,11 +17,12 @@ class NPC(Character):
         self.gives_items_on_talk = gives_items_on_talk if gives_items_on_talk is not None else []
 
 class Monster(Character):
-    def __init__(self, id, name, monster_type, hp, attack_power, drops=None, completes_quest_id=None):
+    def __init__(self, id, name, monster_type, hp, attack_power, drops=None, completes_quest_id=None, xp_reward=0):
         super().__init__(id, name, hp, attack_power)
         self.monster_type = monster_type
         self.drops = drops if drops is not None else []
         self.completes_quest_id = completes_quest_id
+        self.xp_reward = xp_reward
 
 class Item:
     def __init__(self, id, name, description, value=0):
@@ -145,6 +146,9 @@ class Player(Character):
         self.status_effects = {}
         self.quests = {}
         self.discovered_locations = set()
+        self.level = 1
+        self.xp = 0
+        self.xp_to_next_level = 100
 
     def move(self, direction):
         moved = False
@@ -188,6 +192,22 @@ class Player(Character):
             # Add other condition types here in the future
         return True
 
+    def add_xp(self, amount):
+        self.xp += amount
+        message = f"You gain {amount} XP."
+        if self.xp >= self.xp_to_next_level:
+            message += "\n" + self.level_up()
+        return message
+
+    def level_up(self):
+        self.level += 1
+        self.xp -= self.xp_to_next_level
+        self.xp_to_next_level = int(self.xp_to_next_level * 1.5)
+        self.max_hp += 5
+        self.hp = self.max_hp
+        self.attack_power += 1
+        return f"**LEVEL UP!** You are now level {self.level}!"
+
 import os
 import platform
 import json
@@ -228,9 +248,10 @@ def display_menu_and_state(player, message, actions, game_mode):
     """Clears the screen, displays player status, a message, and a numbered action menu."""
     clear_screen()
 
-    print("=" * 40)
-    print(f"| {player.name:<10} | HP: {player.hp:<4} | Location: {player.current_location.name:<15} |")
-    print("=" * 40)
+    print("=" * 50)
+    print(f"| {player.name:<10} | Lvl: {player.level:<2} | HP: {player.hp:<3}/{player.max_hp:<3} | XP: {player.xp:<4}/{player.xp_to_next_level:<4} |")
+    print(f"| Location: {player.current_location.name:<37} |")
+    print("=" * 50)
 
     print(f"\n{message}\n")
 
@@ -340,7 +361,8 @@ def load_world_from_data(game_data):
         all_monsters[monster_id] = Monster(
             monster_id, monster_data["name"], monster_data["monster_type"],
             monster_data["hp"], monster_data["attack_power"],
-            completes_quest_id=monster_data.get("completes_quest_id")
+            completes_quest_id=monster_data.get("completes_quest_id"),
+            xp_reward=monster_data.get("xp_reward", 0)
         )
 
     all_npcs = {}
@@ -452,7 +474,10 @@ def save_game(player):
         "current_location_id": player.current_location.id,
         "inventory_ids": [item.id for item in player.inventory],
         "quests": player.quests,
-        "discovered_locations": list(player.discovered_locations)
+        "discovered_locations": list(player.discovered_locations),
+        "level": player.level,
+        "xp": player.xp,
+        "xp_to_next_level": player.xp_to_next_level
     }
     with open("save_data.json", 'w') as f:
         json.dump(save_data, f, indent=2)
@@ -471,6 +496,9 @@ def load_player_from_save(save_data, all_locations, all_items):
     player.inventory = [copy.deepcopy(all_items[item_id]) for item_id in save_data["inventory_ids"]]
     player.quests = save_data["quests"]
     player.discovered_locations = set(save_data["discovered_locations"])
+    player.level = save_data.get("level", 1)
+    player.xp = save_data.get("xp", 0)
+    player.xp_to_next_level = save_data.get("xp_to_next_level", 100)
     return player
 
 class AsciiMap:
@@ -815,6 +843,8 @@ def main():
                     unique_item_ids = {'lantern_1', 'amulet_of_seeing_1'}
                     for m in defeated_monsters:
                         message += f"\nYou have defeated the {m.name}!"
+                        xp_message = player.add_xp(m.xp_reward)
+                        message += f"\n  {xp_message}"
 
                         # Check for quest completion
                         if m.completes_quest_id and m.completes_quest_id in player.quests:
