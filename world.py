@@ -22,16 +22,30 @@ def load_world_from_data(game_data):
     all_items = {}
     for item_id, item_data in game_data.get("items", {}).items():
         item_type = item_data.get("item_type", "Item")
+        item_class_map = {
+            "Potion": Potion, "EffectPotion": EffectPotion,
+            "Container": Container, "OffensiveItem": OffensiveItem
+        }
+        item_class = item_class_map.get(item_type, Item)
+
+        # Common arguments for all item types
+        item_args = {
+            'id': item_id,
+            'name': item_data["name"],
+            'description': item_data["description"],
+            'value': item_data.get("value", 0),
+            'teaches_skills': item_data.get("teaches_skills")
+        }
+        # Add type-specific arguments
         if item_type == "Potion":
-            all_items[item_id] = Potion(item_id, item_data["name"], item_data["description"], item_data.get("value", 0), item_data.get("heal_amount", 0))
+            item_args['heal_amount'] = item_data.get("heal_amount", 0)
         elif item_type == "EffectPotion":
-            all_items[item_id] = EffectPotion(item_id, item_data["name"], item_data["description"], item_data.get("value", 0), item_data.get("effect"), item_data.get("duration"))
-        elif item_type == "Container":
-            all_items[item_id] = Container(item_id, item_data["name"], item_data["description"], item_data.get("value", 0))
+            item_args['effect'] = item_data.get("effect")
+            item_args['duration'] = item_data.get("duration")
         elif item_type == "OffensiveItem":
-            all_items[item_id] = OffensiveItem(item_id, item_data["name"], item_data["description"], item_data.get("value", 0), item_data.get("damage_amount", 0))
-        else:
-            all_items[item_id] = Item(item_id, item_data["name"], item_data["description"], item_data.get("value", 0))
+            item_args['damage_amount'] = item_data.get("damage_amount", 0)
+
+        all_items[item_id] = item_class(**item_args)
 
     all_monsters = {}
     for monster_id, monster_data in game_data.get("monsters", {}).items():
@@ -48,7 +62,8 @@ def load_world_from_data(game_data):
             npc_id, npc_data["name"], npc_data.get("dialogue", ""),
             npc_data["hp"], npc_data["attack_power"],
             gives_items_on_talk=npc_data.get("gives_items_on_talk"),
-            healing_dialogue=npc_data.get("healing_dialogue")
+            healing_dialogue=npc_data.get("healing_dialogue"),
+            teaches_skills=npc_data.get("teaches_skills")
         )
 
     all_locations = {}
