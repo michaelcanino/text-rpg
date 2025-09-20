@@ -443,6 +443,36 @@ def load_world_from_data(game_data):
 
     return player, game_data.get("menus", {}), all_locations, all_items, all_monsters
 
+def save_game(player):
+    """Saves the player's current state to a JSON file."""
+    save_data = {
+        "name": player.name,
+        "hp": player.hp,
+        "attack_power": player.attack_power,
+        "current_location_id": player.current_location.id,
+        "inventory_ids": [item.id for item in player.inventory],
+        "quests": player.quests,
+        "discovered_locations": list(player.discovered_locations)
+    }
+    with open("save_data.json", 'w') as f:
+        json.dump(save_data, f, indent=2)
+    print("Your progress has been saved.")
+
+def load_player_from_save(save_data, all_locations, all_items):
+    """Creates a player object from save data."""
+    start_location = all_locations[save_data["current_location_id"]]
+    player = Player(
+        "player",
+        save_data["name"],
+        start_location,
+        save_data["hp"],
+        save_data["attack_power"]
+    )
+    player.inventory = [copy.deepcopy(all_items[item_id]) for item_id in save_data["inventory_ids"]]
+    player.quests = save_data["quests"]
+    player.discovered_locations = set(save_data["discovered_locations"])
+    return player
+
 class AsciiMap:
     def __init__(self, all_locations, player):
         self.all_locations = all_locations
@@ -580,7 +610,31 @@ class AsciiMap:
 
 def main():
     game_data = load_game_data("game_data.json")
-    player, menus, all_locations, all_items, all_monsters = load_world_from_data(game_data)
+    # We need all the world data regardless of new game or load
+    _, menus, all_locations, all_items, all_monsters = load_world_from_data(game_data)
+
+    player = None
+    if os.path.exists("save_data.json"):
+        print("A previous voyage has been saved.")
+        while True:
+            choice = input("Would you like to (1) Continue or (2) Start a New Adventure? ")
+            if choice == "1":
+                with open("save_data.json", 'r') as f:
+                    save_data = json.load(f)
+                player = load_player_from_save(save_data, all_locations, all_items)
+                print("Welcome back, brave adventurer!")
+                break
+            elif choice == "2":
+                # Need to reload the world to reset npc state
+                player, menus, all_locations, all_items, all_monsters = load_world_from_data(game_data)
+                print("A new adventure begins!")
+                break
+            else:
+                print("Invalid choice. Please enter 1 or 2.")
+    else:
+        player, menus, all_locations, all_items, all_monsters = load_world_from_data(game_data)
+
+
     game_mode = "explore"
     message = player.current_location.describe(player)
 
@@ -613,6 +667,7 @@ def main():
 
         # --- Command Processing ---
         if verb == "quit":
+            save_game(player)
             print("Thanks for playing!")
             break
 
