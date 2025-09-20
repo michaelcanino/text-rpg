@@ -339,6 +339,47 @@
         "effect": {
             "stat_mod": { "attack_power": 3 }
         }
+    },
+    "knights_valor": {
+        "name": "Knight's Valor",
+        "description": "A true knight can withstand any blow. Greatly increases Max HP.",
+        "type": "passive", "cost": 2, "requirements": [{"type": "level", "value": 10}],
+        "effect": { "stat_mod": { "max_hp": 25 } }
+    },
+    "twin_shot": {
+        "name": "Twin Shot",
+        "description": "Fire two arrows at once, dealing bonus damage.",
+        "type": "active", "cost": 2, "requirements": [{"type": "level", "value": 10}],
+        "effect": { "combat_ability": { "name": "Twin Shot", "damage_bonus": 8, "cooldown": 4 } }
+    },
+    "fireball": {
+        "name": "Fireball",
+        "description": "Hurl a ball of fire at your enemy.",
+        "type": "active", "cost": 2, "requirements": [{"type": "level", "value": 10}],
+        "effect": { "combat_ability": { "name": "Fireball", "damage_bonus": 12, "cooldown": 5 } }
+    }
+  },
+  "classes": {
+    "knight": {
+      "name": "Knight",
+      "short_description": "A bastion of defense and strength.",
+      "base_mods": { "max_hp": 20, "attack_power": 2 },
+      "starting_skills": ["toughness_1"],
+      "skill_pool": ["knights_valor"]
+    },
+    "ranger": {
+      "name": "Ranger",
+      "short_description": "A master of the bow and the wilds.",
+      "base_mods": { "critical_chance": 0.10, "attack_power": 3 },
+      "starting_skills": [],
+      "skill_pool": ["twin_shot"]
+    },
+    "mage": {
+      "name": "Mage",
+      "short_description": "A wielder of immense arcane power.",
+      "base_mods": { "max_hp": 10, "attack_power": 5 },
+      "starting_skills": [],
+      "skill_pool": ["fireball"]
     }
   }
 }

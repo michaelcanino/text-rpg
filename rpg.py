@@ -166,7 +166,17 @@ class ActiveAbility:
 class Player(Character):
     def __init__(self, id, name, current_location, hp=20, max_hp=20, attack_power=5):
         super().__init__(id, name, hp, attack_power)
+
+        # Base stats that are not affected by temporary modifiers
+        self.base_max_hp = max_hp
+        self.base_attack_power = attack_power
+        self.base_critical_chance = 0.0
+
+        # Live stats that include modifiers
         self.max_hp = max_hp
+        self.attack_power = attack_power
+        self.critical_chance = 0.0
+
         self.current_location = current_location
         self.previous_location = current_location
         self.status_effects = {}
@@ -176,9 +186,9 @@ class Player(Character):
         self.xp = 0
         self.xp_to_next_level = 100
         self.skill_points = 0
-        self.critical_chance = 0.0 # Represented as a float, e.g., 0.05 for 5%
         self.unlocked_skills = []
         self.active_abilities = []
+        self.class_id = None
 
     def move(self, direction):
         moved = False
@@ -225,25 +235,144 @@ class Player(Character):
     def add_xp(self, amount):
         self.xp += amount
         leveled_up = False
+        class_choice_pending = False
         message = f"You gain {amount} XP."
         while self.xp >= self.xp_to_next_level:
-            leveled_up = self.level_up()
+            leveled_up, class_choice_triggered = self.level_up()
+            if class_choice_triggered:
+                class_choice_pending = True
             message += f"\n**LEVEL UP!** You are now level {self.level}!"
-        return message, leveled_up
+        return message, leveled_up, class_choice_pending
 
     def level_up(self):
         self.level += 1
         self.xp -= self.xp_to_next_level
         self.xp_to_next_level = int(self.xp_to_next_level * 1.5)
-        self.max_hp += 5
-        self.attack_power += 1
+        self.base_max_hp += 5
+        self.base_attack_power += 1
         self.skill_points += 1
         self.hp = self.max_hp # Fully heal on level up
-        return True # Signal that a level up occurred
+
+        class_choice_triggered = self.level == 10 and self.class_id is None
+        return True, class_choice_triggered
+
+    def recalculate_stats(self, skill_tree_manager, class_manager):
+        """Recalculates all player stats based on base stats, skills, and class."""
+        # Reset to base stats, but use the live stat as the starting point
+        # in case there are other temporary effects not from skills/class
+        self.max_hp = self.base_max_hp
+        self.attack_power = self.base_attack_power
+        self.critical_chance = self.base_critical_chance
+
+        # Apply class modifiers to the base
+        if self.class_id:
+            player_class = class_manager.classes.get(self.class_id)
+            if player_class:
+                for stat, value in player_class.base_mods.items():
+                    # This modifies the live stat, not the base
+                    setattr(self, stat, getattr(self, stat) + value)
+
+        # Apply passive skill modifiers
+        for skill_id in self.unlocked_skills:
+            skill = skill_tree_manager.skills.get(skill_id)
+            if skill and skill.skill_type == 'passive':
+                for stat, mod in skill.effect.get('stat_mod', {}).items():
+                    # This also modifies the live stat
+                    setattr(self, stat, getattr(self, stat) + mod)
+
+        # Ensure HP is not above the new max
+        self.hp = min(self.hp, self.max_hp)
 
 import os
 import platform
 import json
+
+
+class AsciiMap:
+    def __init__(self, all_locations, player):
+        self.all_locations = all_locations
+        self.player = player
+        self.grid = {}
+        self.min_x, self.max_x, self.min_y, self.max_y = 0, 0, 0, 0
+        self._build_grid()
+
+    def _build_grid(self):
+        q = collections.deque([(self.player.current_location, 0, 0)])
+        visited = {self.player.current_location.id}
+        self.grid[(0, 0)] = self.player.current_location
+
+        while q:
+            loc, x, y = q.popleft()
+
+            self.min_x = min(self.min_x, x)
+            self.max_x = max(self.max_x, x)
+            self.min_y = min(self.min_y, y)
+            self.max_y = max(self.max_y, y)
+
+            # Check both normal and conditional exits
+            all_exits = {**loc.exits, **{c.direction: c.destination for c in loc.conditional_exits}}
+
+            for direction, dest_loc in all_exits.items():
+                if dest_loc and dest_loc.id not in visited:
+                    nx, ny = x, y
+                    if direction == 'north': ny -= 1
+                    elif direction == 'south': ny += 1
+                    elif direction == 'east':  nx += 1
+                    elif direction == 'west':  nx -= 1
+
+                    if (nx, ny) not in self.grid:
+                        visited.add(dest_loc.id)
+                        self.grid[(nx, ny)] = dest_loc
+                        q.append((dest_loc, nx, ny))
+
+    def generate(self):
+        if not self.grid: return "Map data is not available."
+
+        map_str = "\n--- World Map ---\n"
+
+        offset_x = -self.min_x
+        offset_y = -self.min_y
+        width = self.max_x - self.min_x + 1
+        height = self.max_y - self.min_y + 1
+
+        char_grid = [[' ' for _ in range(width * 4)] for _ in range(height * 2)]
+
+        for (x, y), loc in self.grid.items():
+            gx, gy = (x + offset_x) * 4, (y + offset_y) * 2
+
+            symbol = '?'
+            if loc.id in self.player.discovered_locations:
+                if loc.id == self.player.current_location.id:
+                    symbol = 'P'
+                elif isinstance(loc, CityLocation): symbol = 'C'
+                elif isinstance(loc, DungeonLocation): symbol = 'D'
+                elif isinstance(loc, WildernessLocation): symbol = 'W'
+                else: symbol = 'R'
+
+            char_grid[gy][gx:gx+3] = f"[{symbol}]"
+
+            # Draw connections
+            all_exits = {**loc.exits, **{c.direction: c.destination for c in loc.conditional_exits}}
+            for direction, dest_loc in all_exits.items():
+                if dest_loc:
+                    for (nx, ny), neighbor_loc in self.grid.items():
+                        if neighbor_loc.id == dest_loc.id:
+                            # Draw connections only if the neighbor is also in the grid
+                            if ny < y: # North
+                                if char_grid[gy - 1][gx + 1] == ' ': char_grid[gy - 1][gx + 1] = '|'
+                            elif ny > y: # South
+                                if char_grid[gy + 1][gx + 1] == ' ': char_grid[gy + 1][gx + 1] = '|'
+                            elif nx > x: # East
+                                if char_grid[gy][gx + 3] == ' ': char_grid[gy][gx + 3] = '-'
+                            elif nx < x: # West
+                                if char_grid[gy][gx - 1] == ' ': char_grid[gy][gx - 1] = '-'
+                            break
+
+        for row in char_grid:
+            map_str += "".join(row).rstrip() + "\n"
+
+        map_str += "\n[P]layer, [C]ity, [W]ilderness, [D]ungeon, [R]oom, ? Undiscovered\n"
+        return map_str
 
 
 class LevelUpChoice:
@@ -262,22 +391,22 @@ class LevelUpManager:
             LevelUpChoice(
                 id="hp",
                 text="Increase Max HP by 10",
-                apply_effect=lambda p: setattr(p, 'max_hp', p.max_hp + 10)
+                apply_effect=lambda p: setattr(p, 'base_max_hp', p.base_max_hp + 10)
             ),
             LevelUpChoice(
                 id="attack",
                 text="Increase Attack Power by 2",
-                apply_effect=lambda p: setattr(p, 'attack_power', p.attack_power + 2)
+                apply_effect=lambda p: setattr(p, 'base_attack_power', p.base_attack_power + 2)
             ),
             LevelUpChoice(
                 id="crit",
                 text="Increase Critical Chance by 5%",
-                apply_effect=lambda p: setattr(p, 'critical_chance', p.critical_chance + 0.05)
+                apply_effect=lambda p: setattr(p, 'base_critical_chance', p.base_critical_chance + 0.05)
             )
         ]
         return choices
 
-    def present_levelup_choices(self, player):
+    def present_levelup_choices(self, player, skill_tree_manager, class_manager):
         level_up_message = f"You are now level {player.level}! You have {player.skill_points} skill point(s)."
 
         clear_screen()
@@ -293,6 +422,7 @@ class LevelUpManager:
         if chosen_upgrade:
             chosen_upgrade.apply_effect(player)
             player.skill_points -= 1
+            player.recalculate_stats(skill_tree_manager, class_manager)
             return f"You chose: {chosen_upgrade.text}. Your power grows!"
         else:
             return "You decided to save your skill point for later."
@@ -300,14 +430,21 @@ class SkillTreeManager:
     def __init__(self, skills_data):
         self.skills = {}
         for skill_id, data in skills_data.items():
-            # The 'type' key from JSON is renamed to 'skill_type' for the Skill class
             data['skill_type'] = data.pop('type')
             self.skills[skill_id] = Skill(id=skill_id, **data)
 
-    def get_available_skills(self, player):
+    def get_available_skills(self, player, class_manager):
         available = []
-        for skill_id, skill in self.skills.items():
-            if skill_id in player.unlocked_skills:
+        skill_pool = set(self.skills.keys())
+        if player.class_id:
+            player_class = class_manager.classes.get(player.class_id)
+            if player_class:
+                general_skills = {sid for sid, s in self.skills.items() if not any(sid in c.skill_pool for c in class_manager.classes.values())}
+                skill_pool = general_skills.union(set(player_class.skill_pool))
+
+        for skill_id in skill_pool:
+            skill = self.skills.get(skill_id)
+            if not skill or skill_id in player.unlocked_skills:
                 continue
 
             reqs_met = True
@@ -323,7 +460,7 @@ class SkillTreeManager:
                 available.append(skill)
         return available
 
-    def unlock_skill(self, player, skill_id):
+    def unlock_skill(self, player, skill_id, class_manager):
         if skill_id not in self.skills:
             return "Skill not found."
 
@@ -335,7 +472,6 @@ class SkillTreeManager:
         if player.skill_points < skill.cost:
             return "You don't have enough skill points."
 
-        # Check requirements again for safety
         for req in skill.requirements:
             if req['type'] == 'level' and player.level < req['value']:
                 return f"You do not meet the level requirement of {req['value']}."
@@ -343,21 +479,17 @@ class SkillTreeManager:
                 required_skill = self.skills.get(req['id'])
                 return f"You need to unlock '{required_skill.name if required_skill else req['id']}' first."
 
-        # All checks passed, unlock the skill
         player.skill_points -= skill.cost
         player.unlocked_skills.append(skill_id)
 
-        # Apply the effect
-        if skill.skill_type == 'passive':
-            if 'stat_mod' in skill.effect:
-                for stat, value in skill.effect['stat_mod'].items():
-                    current_value = getattr(player, stat, 0)
-                    setattr(player, stat, current_value + value)
-        elif skill.skill_type == 'active':
-            if 'combat_ability' in skill.effect:
-                player.active_abilities.append(ActiveAbility(skill))
+        if skill.skill_type == 'active':
+            player.active_abilities.append(ActiveAbility(skill))
 
         return f"You have unlocked: {skill.name}!"
+
+class ClassManager:
+    def __init__(self, classes_data):
+        self.classes = {class_id: PlayerClass(id=class_id, **data) for class_id, data in classes_data.items()}
 
 import random
 import copy
@@ -392,13 +524,14 @@ def select_from_menu(prompt, options, display_key='name'):
         except ValueError:
             print("Invalid input. Please enter a number.")
 
-def display_menu_and_state(player, message, actions, game_mode):
+def display_menu_and_state(player, message, actions, game_mode, class_manager):
     """Clears the screen, displays player status, a message, and a numbered action menu."""
     clear_screen()
 
+    class_name = class_manager.classes[player.class_id].name if player.class_id else "None"
     print("=" * 50)
     print(f"| {player.name:<10} | Lvl: {player.level:<2} | HP: {player.hp:<3}/{player.max_hp:<3} | XP: {player.xp:<4}/{player.xp_to_next_level:<4} |")
-    print(f"| Location: {player.current_location.name:<37} |")
+    print(f"| Class: {class_name:<10} | Location: {player.current_location.name:<22} |")
     print("=" * 50)
 
     print(f"\n{message}\n")
@@ -412,16 +545,13 @@ def display_menu_and_state(player, message, actions, game_mode):
 def get_available_actions(player, game_mode, menus):
     """Generates a list of available actions for the player based on JSON menu definitions."""
     actions = []
-    # The 'encounter' mode is removed, so we only check for 'explore' and 'combat'
     menu_definitions = menus.get(game_mode, []) + menus.get("always", [])
 
     for definition in menu_definitions:
-        # Simple action, no conditions or iterations
         if "iterate" not in definition and "condition" not in definition:
             actions.append(definition.copy())
             continue
 
-        # Check condition for non-iterated actions
         if "condition" in definition and "iterate" not in definition:
             if definition["condition"] == "player.inventory" and not player.inventory:
                 continue
@@ -429,7 +559,6 @@ def get_available_actions(player, game_mode, menus):
                 continue
             actions.append(definition.copy())
 
-        # Handle iterated actions
         if "iterate" in definition:
             iterator_key = definition["iterate"]
             source_list = []
@@ -445,7 +574,6 @@ def get_available_actions(player, game_mode, menus):
                 source_list = player.current_location.monsters
 
             for it in source_list:
-                # Check condition for iterated actions
                 if "condition" in definition:
                     if definition["condition"] == "is_potion" and not isinstance(it, (Potion, EffectPotion)):
                         continue
@@ -472,24 +600,20 @@ def get_available_actions(player, game_mode, menus):
 
                 actions.append(action)
 
-    # Add conditional exits to actions if conditions are met
     for c_exit in player.current_location.conditional_exits:
         if player.check_conditions(c_exit.conditions):
-            action = {
+            actions.append({
                 "text": f"Go {c_exit.direction} -> {c_exit.destination.name}",
                 "command": f"go {c_exit.direction}",
-            }
-            actions.append(action)
+            })
 
-    # Add active abilities to combat menu
     if game_mode == "combat":
         for ability in player.active_abilities:
             cooldown_text = f" (CD: {ability.cooldown})" if ability.cooldown > 0 else ""
-            action = {
+            actions.append({
                 "text": f"Use Ability: {ability.name}{cooldown_text}",
                 "command": f"ability {ability.id}"
-            }
-            actions.append(action)
+            })
 
     return actions
 
@@ -535,7 +659,6 @@ def load_world_from_data(game_data):
     all_locations = {}
     for loc_id, loc_data in game_data.get("locations", {}).items():
         loc_type = loc_data.get("location_type", "base")
-        # A bit of repetition here, but it's clear
         common_args = {
             "id": loc_id,
             "name": loc_data["name"],
@@ -545,31 +668,16 @@ def load_world_from_data(game_data):
         if loc_type == "City":
             all_locations[loc_id] = CityLocation(**common_args)
         elif loc_type == "Wilderness":
-            all_locations[loc_id] = WildernessLocation(
-                **common_args,
-                spawn_chance=loc_data.get("spawn_chance", 0.0)
-            )
+            all_locations[loc_id] = WildernessLocation(**common_args, spawn_chance=loc_data.get("spawn_chance", 0.0))
         elif loc_type == "Dungeon":
-            all_locations[loc_id] = DungeonLocation(
-                **common_args,
-                hazard_description=loc_data.get("hazard_description", "")
-            )
+            all_locations[loc_id] = DungeonLocation(**common_args, hazard_description=loc_data.get("hazard_description", ""))
         elif loc_type == "Swamp":
-            all_locations[loc_id] = SwampLocation(
-                **common_args,
-                spawn_chance=loc_data.get("spawn_chance", 0.0),
-                hidden_description=loc_data.get("hidden_description", "")
-            )
+            all_locations[loc_id] = SwampLocation(**common_args, spawn_chance=loc_data.get("spawn_chance", 0.0), hidden_description=loc_data.get("hidden_description", ""))
         elif loc_type == "Volcanic":
-            all_locations[loc_id] = VolcanicLocation(
-                **common_args,
-                spawn_chance=loc_data.get("spawn_chance", 0.0)
-            )
+            all_locations[loc_id] = VolcanicLocation(**common_args, spawn_chance=loc_data.get("spawn_chance", 0.0))
         else:
             all_locations[loc_id] = Location(**common_args)
 
-    # --- Linking Pass ---
-    # Link monster drops and container items first
     for monster_id, monster_data in game_data.get("monsters", {}).items():
         monster = all_monsters[monster_id]
         monster.drops = [all_items[item_id] for item_id in monster_data.get("drop_ids", [])]
@@ -579,50 +687,30 @@ def load_world_from_data(game_data):
             container = all_items[item_id]
             container.contained_items = [all_items[i_id] for i_id in item_data.get("contained_item_ids", [])]
 
-    # Link locations
     monster_instance_counter = {}
     for loc_id, loc_data in game_data.get("locations", {}).items():
         location = all_locations[loc_id]
         location.exits = {direction: all_locations[dest_id] for direction, dest_id in loc_data.get("exits", {}).items()}
         location.npcs = [copy.deepcopy(all_npcs[npc_id]) for npc_id in loc_data.get("npc_ids", [])]
-
         location.monsters = []
         for monster_id in loc_data.get("monster_ids", []):
             proto_monster = all_monsters[monster_id]
             new_monster = copy.deepcopy(proto_monster)
-
             instance_count = monster_instance_counter.get(monster_id, 0)
             new_monster.id = f"{monster_id}:{instance_count}"
             monster_instance_counter[monster_id] = instance_count + 1
-
             location.monsters.append(new_monster)
-
         location.items = [all_items[item_id] for item_id in loc_data.get("item_ids", [])]
-
-        # Load conditional exits
         location.conditional_exits = []
         for c_exit_data in loc_data.get("conditional_exits", []):
             destination_location = all_locations[c_exit_data['destination_id']]
-            c_exit = ConditionalExit(
-                direction=c_exit_data['direction'],
-                destination=destination_location,
-                description=c_exit_data['description'],
-                conditions=c_exit_data['conditions']
-            )
+            c_exit = ConditionalExit(direction=c_exit_data['direction'], destination=destination_location, description=c_exit_data['description'], conditions=c_exit_data['conditions'])
             location.conditional_exits.append(c_exit)
 
-    # --- Player Creation ---
     player_data = game_data["player"]
     start_location = all_locations[player_data["start_location_id"]]
     inventory = [all_items[item_id] for item_id in player_data.get("inventory", [])]
-    player = Player(
-        "player",
-        player_data["name"],
-        start_location,
-        player_data["hp"],
-        player_data.get("max_hp", player_data["hp"]),
-        player_data["attack_power"]
-    )
+    player = Player("player", player_data["name"], start_location, player_data["hp"], player_data.get("max_hp", player_data["hp"]), player_data["attack_power"])
     player.inventory = inventory
     player.quests = player_data.get("quests", {})
     player.discovered_locations.add(start_location.id)
@@ -632,200 +720,99 @@ def load_world_from_data(game_data):
 def save_game(player):
     """Saves the player's current state to a JSON file."""
     save_data = {
-        "name": player.name,
-        "hp": player.hp,
-        "max_hp": player.max_hp,
-        "attack_power": player.attack_power,
+        "name": player.name, "hp": player.hp,
+        "base_max_hp": player.base_max_hp, "base_attack_power": player.base_attack_power,
+        "base_critical_chance": player.base_critical_chance,
         "current_location_id": player.current_location.id,
         "inventory_ids": [item.id for item in player.inventory],
-        "quests": player.quests,
-        "discovered_locations": list(player.discovered_locations),
-        "level": player.level,
-        "xp": player.xp,
-        "xp_to_next_level": player.xp_to_next_level,
-        "skill_points": player.skill_points,
-        "critical_chance": player.critical_chance,
-        "unlocked_skills": player.unlocked_skills
+        "quests": player.quests, "discovered_locations": list(player.discovered_locations),
+        "level": player.level, "xp": player.xp, "xp_to_next_level": player.xp_to_next_level,
+        "skill_points": player.skill_points, "unlocked_skills": player.unlocked_skills,
+        "class_id": player.class_id
     }
     with open("save_data.json", 'w') as f:
         json.dump(save_data, f, indent=2)
     print("Your progress has been saved.")
 
-def load_player_from_save(save_data, all_locations, all_items):
+def load_player_from_save(save_data, all_locations, all_items, skill_tree_manager, class_manager):
     """Creates a player object from save data."""
     start_location = all_locations[save_data["current_location_id"]]
-
-    # Get hp and max_hp, ensuring backward compatibility
-    hp = save_data["hp"]
-    max_hp = save_data.get("max_hp", hp)
-
-    player = Player(
-        "player",
-        save_data["name"],
-        start_location,
-        hp,
-        max_hp,
-        save_data["attack_power"]
-    )
+    player = Player("player", save_data["name"], start_location, save_data["hp"], save_data.get("base_max_hp", 20), save_data.get("base_attack_power", 5))
     player.inventory = [copy.deepcopy(all_items[item_id]) for item_id in save_data["inventory_ids"]]
-    player.quests = save_data["quests"]
-    player.discovered_locations = set(save_data["discovered_locations"])
+    player.quests = save_data.get("quests", {})
+    player.discovered_locations = set(save_data.get("discovered_locations", [start_location.id]))
     player.level = save_data.get("level", 1)
     player.xp = save_data.get("xp", 0)
     player.xp_to_next_level = save_data.get("xp_to_next_level", 100)
     player.skill_points = save_data.get("skill_points", 0)
-    player.critical_chance = save_data.get("critical_chance", 0.0)
     player.unlocked_skills = save_data.get("unlocked_skills", [])
+    player.class_id = save_data.get("class_id")
 
-    # Re-initialize active abilities from unlocked skills
-    skill_tree_manager = SkillTreeManager(load_game_data("game_data.json").get("skills", {}))
+    player.recalculate_stats(skill_tree_manager, class_manager)
     for skill_id in player.unlocked_skills:
         skill = skill_tree_manager.skills.get(skill_id)
         if skill and skill.skill_type == 'active':
             player.active_abilities.append(ActiveAbility(skill))
 
+    player.hp = min(player.hp, player.max_hp)
+
     return player
 
-class AsciiMap:
-    def __init__(self, all_locations, player):
-        self.all_locations = all_locations
-        self.player = player
-        self.accessible_graph = {}
-        self.coords = {}
+class PlayerClass:
+    def __init__(self, id, name, short_description, base_mods, starting_skills, skill_pool):
+        self.id = id
+        self.name = name
+        self.short_description = short_description
+        self.base_mods = base_mods
+        self.starting_skills = starting_skills
+        self.skill_pool = skill_pool
 
-    def generate(self):
-        self._build_accessible_graph()
-        if not self.accessible_graph:
-            return "You are lost in an unknown place."
+def handle_class_choice(player, class_manager, skill_tree_manager):
+    """Handles the UI and logic for the one-time class choice."""
+    clear_screen()
+    print("*" * 20)
+    print("Time to Specialize!")
+    print("*" * 20)
+    print("\nYou have reached level 10! You must now choose a class.")
+    print("This choice is permanent and will shape your future adventures.\n")
 
-        self._assign_coordinates()
-        visible_ids = self._get_visible_locations()
-        return self._render_map(visible_ids)
+    choices = list(class_manager.classes.values())
 
-    def _build_accessible_graph(self):
-        start_id = self.player.current_location.id
-        q = collections.deque([start_id])
-        visited = {start_id}
+    for i, p_class in enumerate(choices):
+        print(f"--- {i+1}. {p_class.name} ---")
+        print(f"  {p_class.short_description}")
+        print("  Bonuses:")
+        for stat, value in p_class.base_mods.items():
+            current_stat = getattr(player, f"base_{stat}", getattr(player, stat))
+            print(f"    - {stat.replace('_', ' ').title()}: {current_stat} -> {current_stat + value}")
+        for skill_id in p_class.starting_skills:
+            skill = skill_tree_manager.skills.get(skill_id)
+            if skill:
+                print(f"    - Starts with skill: {skill.name}")
+        print()
 
-        while q:
-            current_id = q.popleft()
-            if current_id not in self.all_locations: continue
-            location = self.all_locations[current_id]
-            self.accessible_graph[current_id] = {}
+    chosen_class = select_from_menu("Choose your path:", choices)
 
-            exits = dict(location.exits.items())
-            for c_exit in location.conditional_exits:
-                if self.player.check_conditions(c_exit.conditions):
-                    exits[c_exit.direction] = c_exit.destination
+    if chosen_class:
+        player.class_id = chosen_class.id
+        for skill_id in chosen_class.starting_skills:
+            skill_to_unlock = skill_tree_manager.skills.get(skill_id)
+            if skill_to_unlock and skill_id not in player.unlocked_skills:
+                player.skill_points += skill_to_unlock.cost
+                skill_tree_manager.unlock_skill(player, skill_id, class_manager)
 
-            for direction, dest_loc in exits.items():
-                self.accessible_graph[current_id][direction] = dest_loc.id
-                if dest_loc.id not in visited:
-                    visited.add(dest_loc.id)
-                    q.append(dest_loc.id)
+        player.recalculate_stats(skill_tree_manager, class_manager)
 
-    def _assign_coordinates(self):
-        start_id = self.player.current_location.id
-        q = collections.deque([start_id])
-        self.coords = {start_id: (0, 0)}
+        return f"You have chosen the path of the {chosen_class.name}! Your journey continues."
+    else:
+        return handle_class_choice(player, class_manager, skill_tree_manager)
 
-        while q:
-            current_id = q.popleft()
-            cx, cy = self.coords[current_id]
-
-            exits = self.accessible_graph.get(current_id, {})
-            for direction, neighbor_id in exits.items():
-                if neighbor_id in self.coords:
-                    continue
-
-                dx, dy = 0, 0
-                if direction == 'north': dy = -1
-                elif direction == 'south': dy = 1
-                elif direction == 'east':  dx = 1
-                elif direction == 'west':  dx = -1
-                else: continue
-
-                nx, ny = cx + dx, cy + dy
-
-                while (nx, ny) in self.coords.values():
-                    nx += 1 # Simple collision avoidance
-
-                self.coords[neighbor_id] = (nx, ny)
-                q.append(neighbor_id)
-
-    def _get_visible_locations(self):
-        visible = set(self.player.discovered_locations)
-        for loc_id in list(self.player.discovered_locations):
-            if loc_id in self.accessible_graph:
-                for neighbor_id in self.accessible_graph[loc_id].values():
-                    visible.add(neighbor_id)
-        return visible
-
-    def _render_map(self, visible_ids):
-        if not self.coords: return "Map is empty."
-
-        visible_coords = {loc_id: pos for loc_id, pos in self.coords.items() if loc_id in visible_ids}
-        if not visible_coords: return "You haven't discovered enough to draw a map."
-
-        min_x = min(x for x, y in visible_coords.values())
-        min_y = min(y for x, y in visible_coords.values())
-        norm_coords = {loc_id: (x - min_x, y - min_y) for loc_id, (x, y) in visible_coords.items()}
-
-        max_x = max(x for x, y in norm_coords.values()) if norm_coords else 0
-        max_y = max(y for x, y in norm_coords.values()) if norm_coords else 0
-
-        grid = [[None for _ in range(max_x + 1)] for _ in range(max_y + 1)]
-        for loc_id, (x, y) in norm_coords.items():
-            grid[y][x] = loc_id
-
-        max_width = len("[ ??? ]")
-        for loc_id in visible_ids:
-            if loc_id in self.player.discovered_locations:
-                name = self.all_locations[loc_id].name
-                max_width = max(max_width, len(name) + 4)
-
-        output_lines = []
-        for y, row in enumerate(grid):
-            node_line = ""
-            conn_line = ""
-            for x, loc_id in enumerate(row):
-                if loc_id is None:
-                    node_line += " " * (max_width + 3)
-                    conn_line += " " * (max_width + 3)
-                    continue
-
-                if loc_id in self.player.discovered_locations:
-                    loc = self.all_locations[loc_id]
-                    name = f"*{loc.name}*" if loc.id == self.player.current_location.id else loc.name
-                    node_str = f"[{name}]"
-                else:
-                    node_str = "[ ??? ]"
-                node_line += node_str.center(max_width)
-
-                exits = self.accessible_graph.get(loc_id, {})
-                east_neighbor = exits.get('east')
-                if east_neighbor and east_neighbor in visible_ids and east_neighbor in norm_coords and norm_coords[east_neighbor][0] > x:
-                    node_line += "---"
-                else:
-                    node_line += "   "
-
-                south_neighbor = exits.get('south')
-                if south_neighbor and south_neighbor in visible_ids and south_neighbor in norm_coords and norm_coords[south_neighbor][1] > y:
-                    conn_line += "|".center(max_width) + "   "
-                else:
-                    conn_line += " " * (max_width + 3)
-
-            output_lines.append(node_line.rstrip())
-            if conn_line.strip():
-                output_lines.append(conn_line.rstrip())
-
-        return "\n".join(output_lines)
 
 def main():
     game_data = load_game_data("game_data.json")
-    # We need all the world data regardless of new game or load
     _, menus, all_locations, all_items, all_monsters = load_world_from_data(game_data)
     skill_tree_manager = SkillTreeManager(game_data.get("skills", {}))
+    class_manager = ClassManager(game_data.get("classes", {}))
 
     player = None
     if os.path.exists("save_data.json"):
@@ -835,11 +822,10 @@ def main():
             if choice == "1":
                 with open("save_data.json", 'r') as f:
                     save_data = json.load(f)
-                player = load_player_from_save(save_data, all_locations, all_items)
+                player = load_player_from_save(save_data, all_locations, all_items, skill_tree_manager, class_manager)
                 print("Welcome back, brave adventurer!")
                 break
             elif choice == "2":
-                # Need to reload the world to reset npc state
                 player, menus, all_locations, all_items, all_monsters = load_world_from_data(game_data)
                 print("A new adventure begins!")
                 break
@@ -855,22 +841,23 @@ def main():
     level_up_manager = LevelUpManager()
 
     while player.is_alive():
-        # --- State Transition Check ---
+        if game_mode == "class_choice":
+            message = handle_class_choice(player, class_manager, skill_tree_manager)
+            game_mode = "explore"
+            continue
+
         if game_mode == "level_up":
             if player.skill_points > 0:
-                message = level_up_manager.present_levelup_choices(player)
+                message = level_up_manager.present_levelup_choices(player, skill_tree_manager, class_manager)
             game_mode = previous_game_mode
             continue
 
         if game_mode == "skills_menu":
-            message = "You contemplate your skills."
-            # For simplicity, we'll create a temporary menu here.
-            # A more robust solution might involve JSON-defined menus for this.
             clear_screen()
             print(f"--- Skill Tree --- (Skill Points: {player.skill_points})\n")
 
             unlocked_skills = [skill_tree_manager.skills[skill_id] for skill_id in player.unlocked_skills]
-            available_skills = skill_tree_manager.get_available_skills(player)
+            available_skills = skill_tree_manager.get_available_skills(player, class_manager)
 
             print("--- Unlocked Skills ---")
             if not unlocked_skills:
@@ -900,13 +887,12 @@ def main():
                 choice_index = int(choice) - 1
                 if 0 <= choice_index < len(available_skills):
                     skill_to_unlock = available_skills[choice_index]
-                    message = skill_tree_manager.unlock_skill(player, skill_to_unlock.id)
+                    message = skill_tree_manager.unlock_skill(player, skill_to_unlock.id, class_manager)
                 else:
                     message = "Invalid skill number."
             except ValueError:
                 message = "Invalid input."
 
-            # After action, stay in the skills menu
             game_mode = "skills_menu"
             continue
 
@@ -916,9 +902,8 @@ def main():
             monster_names = " and a ".join(m.name for m in player.current_location.monsters)
             message = f"You step into the {player.current_location.name}... {monster_names} block(s) your way!"
 
-        # --- UI and Input ---
         available_actions = get_available_actions(player, game_mode, menus)
-        display_menu_and_state(player, message, available_actions, game_mode)
+        display_menu_and_state(player, message, available_actions, game_mode, class_manager)
 
         choice = input("> ")
         try:
@@ -933,18 +918,16 @@ def main():
 
         parts = command.split()
         verb = parts[0]
-        message = "" # Reset message each turn
+        message = ""
         player_turn_taken = False
 
-        # --- Command Processing ---
         if verb == "quit":
             save_game(player)
             print("Thanks for playing!")
             break
 
-        # --- EXPLORE MODE ---
         if game_mode == "explore":
-            player_turn_taken = True # Most explore actions take a "turn"
+            player_turn_taken = True
             if verb == "look":
                 message = player.current_location.describe(player)
             elif verb == "map":
@@ -979,13 +962,11 @@ def main():
                     message = "There is no one here by that name."
                 else:
                     dialogue_to_use = None
-                    # Find the first dialogue entry whose conditions are met
                     for dialogue_entry in npc.dialogue:
                         if player.check_conditions(dialogue_entry.get('conditions', [])):
                             dialogue_to_use = dialogue_entry
                             break
 
-                    # Handle healing dialogue first if it exists
                     if npc.healing_dialogue:
                         if player.hp < player.max_hp:
                             message = f'**{npc.name} says:** "{npc.healing_dialogue["pre_heal"]}"'
@@ -998,17 +979,14 @@ def main():
                     else:
                         message = f'**{npc.name} says:** "{dialogue_to_use["text"]}"'
 
-                        # Check if this dialogue gives a quest
                         quest_id_to_give = dialogue_to_use.get("gives_quest_id")
                         if quest_id_to_give and quest_id_to_give not in player.quests:
-                            # Get quest template from the main game data
                             quest_template = game_data["quests"].get(quest_id_to_give)
                             if quest_template:
                                 player.quests[quest_id_to_give] = copy.deepcopy(quest_template)
                                 player.quests[quest_id_to_give]['state'] = 'active'
                                 message += f"\n\n  New Quest: {quest_template['name']}"
 
-                                # Check if this dialogue gives items (and only if the quest was just given)
                                 items_to_give = dialogue_to_use.get("gives_items")
                                 if items_to_give:
                                     given_items_names = []
@@ -1020,7 +998,6 @@ def main():
 
                                     if given_items_names:
                                         message += f"\n  You received: {', '.join(given_items_names)}!"
-                                    # To ensure items are only given once, we can clear the list from the NPC instance
                                     dialogue_to_use["gives_items"] = []
 
             elif verb == "use":
@@ -1033,7 +1010,6 @@ def main():
                 else:
                     message = "You don't have that item."
 
-        # --- COMBAT MODE ---
         elif game_mode == "combat":
             active_monsters = player.current_location.monsters
 
@@ -1094,43 +1070,42 @@ def main():
                 monsters_left_behind = player.current_location.monsters[:]
 
                 for monster in monsters_left_behind:
-                    if random.random() < 0.5: # 50% chance
+                    if random.random() < 0.5:
                         player.hp -= monster.attack_power
                         retreat_message += f"\nThe {monster.name} strikes you for {monster.attack_power} damage as you escape!"
                     else:
                         retreat_message += f"\nThe {monster.name} swipes at you but misses!"
 
                 if player.is_alive():
-                    # Create summary before moving
                     threat_summary = f"The {player.current_location.name} still harbors danger: " + ", ".join(f"{m.name} ({m.hp} HP)" for m in monsters_left_behind)
                     player.retreat()
                     message = f"{retreat_message}\n\nYou escaped back to {player.current_location.name}.\n\n{threat_summary}"
                 else:
-                    message = retreat_message # Let the main loop handle death
+                    message = retreat_message
 
                 game_mode = "explore"
                 player_turn_taken = True
 
-            # --- Post-Action Resolution ---
             if player_turn_taken:
                 defeated_monsters = [m for m in active_monsters if not m.is_alive()]
                 if defeated_monsters:
                     unique_item_ids = {'lantern_1', 'amulet_of_seeing_1'}
                     for m in defeated_monsters:
                         message += f"\nYou have defeated the {m.name}!"
-                        xp_message, leveled_up = player.add_xp(m.xp_reward)
+                        xp_message, leveled_up, class_choice_pending = player.add_xp(m.xp_reward)
                         message += f"\n  {xp_message}"
-                        if leveled_up:
+                        if class_choice_pending:
+                            previous_game_mode = game_mode
+                            game_mode = "class_choice"
+                        elif leveled_up:
                             previous_game_mode = game_mode
                             game_mode = "level_up"
 
-                        # Check for quest completion
                         if m.completes_quest_id and m.completes_quest_id in player.quests:
                             if player.quests[m.completes_quest_id].get('state') != 'completed':
                                 player.quests[m.completes_quest_id]['state'] = 'completed'
                                 message += f"\n  Quest Completed: {player.quests[m.completes_quest_id]['name']}!"
 
-                        # Handle loot drops
                         if m.drops:
                             items_dropped_this_monster = []
                             for item in m.drops:
@@ -1146,7 +1121,6 @@ def main():
                                 if "Amulet of Seeing" in items_dropped_this_monster:
                                     loot_message += "the Amulet of Seeing."
                                 else:
-                                    # A simple heuristic for "a" vs "an"
                                     article = "an" if items_dropped_this_monster[0].lower().startswith(('a', 'e', 'i', 'o', 'u')) else "a"
                                     if len(items_dropped_this_monster) == 1:
                                         loot_message += f"{article} {items_dropped_this_monster[0]}."
@@ -1154,7 +1128,6 @@ def main():
                                         loot_message += f": {', '.join(items_dropped_this_monster)}."
                                 message += loot_message
 
-                        # Handle sequential spawning
                         monster_proto_id = m.id.split(':')[0]
                         if monster_proto_id in player.current_location.spawns_on_defeat:
                             spawn_data = player.current_location.spawns_on_defeat[monster_proto_id]
@@ -1163,7 +1136,6 @@ def main():
                             new_monster_proto = all_monsters.get(monster_to_spawn_id)
                             if new_monster_proto:
                                 new_monster = copy.deepcopy(new_monster_proto)
-                                # Find a unique instance ID
                                 instance_count = sum(1 for mon in player.current_location.monsters if mon.id.startswith(monster_to_spawn_id))
                                 new_monster.id = f"{monster_to_spawn_id}:{instance_count}"
 
@@ -1204,7 +1176,6 @@ def main():
                         del player.status_effects[effect]
                         message += f"\nThe effect of {effect.replace('_', ' ')} has worn off."
 
-                # Tick down ability cooldowns
                 for ability in player.active_abilities:
                     if ability.cooldown > 0:
                         ability.cooldown -= 1
