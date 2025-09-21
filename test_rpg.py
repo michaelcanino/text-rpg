@@ -6,7 +6,7 @@ from unittest.mock import patch
 from models import Player, Potion, NPC
 from world import load_game_data, load_world_from_data
 from managers import SkillTreeManager, ClassManager, save_game, load_player_from_save
-from main import handle_class_choice
+from main import handle_class_choice, handle_skill_teaching
 
 class TestRPGSystem(unittest.TestCase):
 
@@ -137,6 +137,63 @@ class TestRPGSystem(unittest.TestCase):
         # And should not have access to other classes' skills
         self.assertNotIn('twin_shot', available_skill_ids)
         self.assertNotIn('fireball', available_skill_ids)
+
+    @patch('main.select_from_menu')
+    def test_learn_fireball_positive(self, mock_select):
+        """Test that a player at level 10 or higher can learn the Fireball skill from Sage Rowan."""
+        self.player.level = 10
+        self.player.current_location = self.all_locations["whispering_woods"]
+        sage_rowan = next((n for n in self.player.current_location.npcs if n.id == "sage_rowan"), None)
+        self.assertIsNotNone(sage_rowan, "Sage Rowan not found in Whispering Woods")
+
+        # Mock the menu selection to automatically choose the Fireball skill
+        fireball_skill = self.skill_tree_manager.skills['fireball']
+        mock_select.return_value = fireball_skill
+
+        message = handle_skill_teaching(self.player, sage_rowan, self.skill_tree_manager, self.class_manager)
+
+        self.assertIn("You have unlocked: Fireball!", message)
+        self.assertIn("fireball", self.player.unlocked_skills)
+        self.assertTrue(any(a.id == "fireball" for a in self.player.active_abilities))
+
+    def test_learn_fireball_negative_level(self):
+        """Test that a player below level 10 cannot learn the Fireball skill."""
+        self.player.level = 9
+        self.player.current_location = self.all_locations["whispering_woods"]
+        sage_rowan = next((n for n in self.player.current_location.npcs if n.id == "sage_rowan"), None)
+        self.assertIsNotNone(sage_rowan, "Sage Rowan not found in Whispering Woods")
+
+        message = handle_skill_teaching(self.player, sage_rowan, self.skill_tree_manager, self.class_manager)
+
+        self.assertEqual(message, "")
+
+    @patch('main.select_from_menu')
+    def test_learn_fireball_duplicate(self, mock_select):
+        """Test that a player who already knows Fireball is informed they already know it."""
+        self.player.level = 10
+        self.player.unlocked_skills.append("fireball")
+        self.player.current_location = self.all_locations["whispering_woods"]
+        sage_rowan = next((n for n in self.player.current_location.npcs if n.id == "sage_rowan"), None)
+        self.assertIsNotNone(sage_rowan, "Sage Rowan not found in Whispering Woods")
+
+        message = handle_skill_teaching(self.player, sage_rowan, self.skill_tree_manager, self.class_manager)
+
+        self.assertEqual(message, "")
+
+    def test_old_man_willow_regression(self):
+        """Test that Old Man Willow still gives his quest and items correctly."""
+        old_man_willow = next((n for n in self.all_locations["oakhaven"].npcs if n.id == "old_man_willow"), None)
+        self.assertIsNotNone(old_man_willow, "Old Man Willow not found in Oakhaven")
+
+        # Check that he doesn't teach fireball
+        self.assertFalse(old_man_willow.teaches_skills)
+
+        # Check that he still gives a quest
+        dialogue = next((d for d in old_man_willow.dialogue if not d.get('conditions')), None)
+        self.assertIsNotNone(dialogue)
+        self.assertEqual(dialogue.get("gives_quest_id"), "quest_cleared_swamp")
+        self.assertIn("lantern_1", dialogue.get("gives_items", []))
+
 
 if __name__ == '__main__':
     unittest.main()
