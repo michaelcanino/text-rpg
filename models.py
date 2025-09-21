@@ -1,5 +1,7 @@
+import collections
+
 __all__ = [
-    'Character', 'NPC', 'Monster',
+    'Character', 'NPC', 'Monster', 'Merchant',
     'Item', 'Potion', 'EffectPotion', 'OffensiveItem', 'Container',
     'Location', 'CityLocation', 'WildernessLocation', 'DungeonLocation', 'SwampLocation', 'VolcanicLocation',
     'Skill', 'ActiveAbility', 'Player', 'PlayerClass'
@@ -24,6 +26,33 @@ class NPC(Character):
         self.gives_items_on_talk = gives_items_on_talk if gives_items_on_talk is not None else []
         self.healing_dialogue = healing_dialogue
         self.teaches_skills = teaches_skills if teaches_skills is not None else []
+
+
+class Merchant(NPC):
+    def __init__(self, id, name, dialogue, hp=0, attack_power=0, inventory=None, gold=0, **kwargs):
+        super().__init__(id, name, dialogue, hp, attack_power, inventory)
+        self.gold = gold
+        self.item_sell_counts = collections.defaultdict(int)
+        self.original_inventory = [item for item in self.inventory]
+
+    def get_sell_price(self, item):
+        """Calculates the price a merchant will buy an item for."""
+        base_price = item.value
+        sell_count = self.item_sell_counts[item.id]
+        # Price decreases by 10% for each time the same item is sold, max 50% reduction
+        price_modifier = max(0.5, 1.0 - (sell_count * 0.1))
+        return int(base_price * price_modifier)
+
+    def get_buy_price(self, item):
+        """Calculates the price a merchant will sell an item for."""
+        # Merchants sell items for a 20% markup from their base value
+        return int(item.value * 1.2)
+
+    def restock(self, all_items=None):
+        """Resets the merchant's inventory to its original state and clears sell counts."""
+        self.inventory = [item for item in self.original_inventory]
+        self.item_sell_counts.clear()
+        print(f"{self.name} has restocked their inventory.")
 
 class Monster(Character):
     def __init__(self, id, name, monster_type, hp, attack_power, drops=None, completes_quest_id=None, xp_reward=0):
@@ -183,6 +212,7 @@ class Player(Character):
         self.attack_power = attack_power
         self.critical_chance = 0.0
 
+        self.gold = 0
         self.current_location = current_location
         self.previous_location = current_location
         self.status_effects = {}

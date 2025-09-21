@@ -6,7 +6,7 @@ import copy
 from models import Player, Potion, OffensiveItem, EffectPotion, Skill, ActiveAbility, PlayerClass
 
 __all__ = [
-    'LevelUpManager', 'LevelUpChoice', 'SkillTreeManager', 'ClassManager',
+    'LevelUpManager', 'LevelUpChoice', 'SkillTreeManager', 'ClassManager', 'TimeManager',
     'save_game', 'load_player_from_save',
     'select_from_menu', 'display_menu_and_state', 'get_available_actions', 'clear_screen'
 ]
@@ -145,12 +145,33 @@ class ClassManager:
     def __init__(self, classes_data):
         self.classes = {class_id: PlayerClass(id=class_id, **data) for class_id, data in classes_data.items()}
 
+
+class TimeManager:
+    def __init__(self, all_npcs, all_items, restock_interval=50):
+        self.turn_count = 0
+        self.restock_interval = restock_interval
+        self.all_npcs = all_npcs
+        self.all_items = all_items
+
+    def advance_time(self, turns=1):
+        self.turn_count += turns
+        if self.turn_count > 0 and self.turn_count % self.restock_interval == 0:
+            self.restock_merchants()
+
+    def restock_merchants(self):
+        from models import Merchant
+        print("The winds of commerce blow through the land... merchants have restocked their wares.")
+        for npc in self.all_npcs.values():
+            if isinstance(npc, Merchant):
+                npc.restock(self.all_items)
+
 def save_game(player):
     """Saves the player's current state to a JSON file."""
     save_data = {
         "name": player.name, "hp": player.hp,
         "base_max_hp": player.base_max_hp, "base_attack_power": player.base_attack_power,
         "base_critical_chance": player.base_critical_chance,
+        "gold": player.gold,
         "current_location_id": player.current_location.id,
         "inventory_ids": [item.id for item in player.inventory],
         "quests": player.quests, "discovered_locations": list(player.discovered_locations),
@@ -179,6 +200,7 @@ def load_player_from_save(save_data, all_locations, all_items, skill_tree_manage
         base_attack
     )
     player.base_critical_chance = base_crit
+    player.gold = save_data.get("gold", 0)
 
     player.inventory = [copy.deepcopy(all_items[item_id]) for item_id in save_data["inventory_ids"]]
     player.quests = save_data.get("quests", {})
@@ -232,10 +254,10 @@ def display_menu_and_state(player, message, actions, game_mode, class_manager):
     clear_screen()
 
     class_name = class_manager.classes[player.class_id].name if player.class_id else "None"
-    print("=" * 50)
-    print(f"| {player.name:<10} | Lvl: {player.level:<2} | HP: {player.hp:<3}/{player.max_hp:<3} | XP: {player.xp:<4}/{player.xp_to_next_level:<4} |")
-    print(f"| Class: {class_name:<10} | Location: {player.current_location.name:<22} |")
-    print("=" * 50)
+    print("=" * 60)
+    print(f"| {player.name:<10} | Lvl: {player.level:<2} | HP: {player.hp:<3}/{player.max_hp:<3} | Gold: {player.gold:<5} |")
+    print(f"| Class: {class_name:<10} | Location: {player.current_location.name:<28} |")
+    print("=" * 60)
 
     print(f"\n{message}\n")
 
@@ -245,7 +267,7 @@ def display_menu_and_state(player, message, actions, game_mode, class_manager):
         print(f"  {i + 1}. {action['text']}")
     print("-" * 40)
 
-def get_available_actions(player, game_mode, menus, all_locations):
+def get_available_actions(player, game_mode, menus, all_locations, trading_with_npc=None):
     """Generates a list of available actions for the player based on JSON menu definitions."""
     actions = []
     menu_definitions = menus.get(game_mode, []) + menus.get("always", [])
@@ -275,6 +297,9 @@ def get_available_actions(player, game_mode, menus, all_locations):
                 source_list = player.inventory
             elif iterator_key == "location.monsters":
                 source_list = player.current_location.monsters
+            elif iterator_key == "merchant.inventory":
+                if trading_with_npc:
+                    source_list = trading_with_npc.inventory
 
             for it in source_list:
                 if "condition" in definition:
@@ -286,6 +311,14 @@ def get_available_actions(player, game_mode, menus, all_locations):
                     direction, dest = it
                     action['text'] = definition["text"].format(direction=direction, destination=dest)
                     action['command'] = definition["command"].format(direction=direction)
+                elif game_mode == "trade" and iterator_key == "merchant.inventory":
+                    price = trading_with_npc.get_buy_price(it)
+                    action['text'] = definition["text"].format(item=it, price=price)
+                    action['command'] = definition["command"].format(item=it)
+                elif game_mode == "trade" and iterator_key == "player.inventory":
+                    price = trading_with_npc.get_sell_price(it)
+                    action['text'] = definition["text"].format(item=it, price=price)
+                    action['command'] = definition["command"].format(item=it)
                 else:
                     # Generic formatter for npc, item, monster, etc.
                     key_name = iterator_key.split('.')[-1][:-1]

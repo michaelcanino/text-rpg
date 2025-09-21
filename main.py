@@ -3,10 +3,10 @@ import copy
 import random
 import json
 
-from models import Player, Potion, Container, OffensiveItem, EffectPotion, VolcanicLocation, Item
+from models import Player, Potion, Container, OffensiveItem, EffectPotion, VolcanicLocation, Item, Merchant
 from world import load_game_data, load_world_from_data, AsciiMap
 from managers import (
-    LevelUpManager, SkillTreeManager, ClassManager,
+    LevelUpManager, SkillTreeManager, ClassManager, TimeManager,
     save_game, load_player_from_save,
     select_from_menu, display_menu_and_state, get_available_actions, clear_screen
 )
@@ -89,9 +89,10 @@ def handle_class_choice(player, class_manager, skill_tree_manager):
 
 def main():
     game_data = load_game_data("game_data.json")
-    _, menus, all_locations, all_items, all_monsters = load_world_from_data(game_data)
+    _, menus, all_locations, all_items, all_monsters, all_npcs = load_world_from_data(game_data)
     skill_tree_manager = SkillTreeManager(game_data.get("skills", {}))
     class_manager = ClassManager(game_data.get("classes", {}))
+    time_manager = TimeManager(all_npcs, all_items)
 
     player = None
     if os.path.exists("save_data.json"):
@@ -105,13 +106,13 @@ def main():
                 print("Welcome back, brave adventurer!")
                 break
             elif choice == "2":
-                player, _, _, _, _ = load_world_from_data(game_data)
+                player, _, _, _, _, _ = load_world_from_data(game_data)
                 print("A new adventure begins!")
                 break
             else:
                 print("Invalid choice. Please enter 1 or 2.")
     else:
-        player, _, _, _, _ = load_world_from_data(game_data)
+        player, _, _, _, _, _ = load_world_from_data(game_data)
 
     # Migration for old saves: if player is >= level 10 and has no class, trigger choice
     if player.level >= 10 and player.class_id is None:
@@ -123,8 +124,13 @@ def main():
     game_mode = "explore"
     previous_game_mode = "explore"
     level_up_manager = LevelUpManager()
+    trading_with_npc = None
 
     while player.is_alive():
+        if game_mode == "trade":
+            merchant = trading_with_npc
+            message = f"You are trading with {merchant.name}. You have {player.gold} gold. They have {merchant.gold} gold."
+
         if game_mode == "class_choice":
             message = handle_class_choice(player, class_manager, skill_tree_manager)
             game_mode = "explore"
@@ -182,7 +188,7 @@ def main():
             monster_names = " and a ".join(m.name for m in player.current_location.monsters)
             message = f"You step into the {player.current_location.name}... {monster_names} block(s) your way!"
 
-        available_actions = get_available_actions(player, game_mode, menus, all_locations)
+        available_actions = get_available_actions(player, game_mode, menus, all_locations, trading_with_npc)
         display_menu_and_state(player, message, available_actions, game_mode, class_manager)
 
         choice = input("> ")
@@ -205,6 +211,45 @@ def main():
             save_game(player)
             print("Thanks for playing!")
             break
+
+        if game_mode == "trade":
+            merchant = trading_with_npc
+            if verb == "buy":
+                item_id = " ".join(parts[1:])
+                item = next((i for i in merchant.inventory if i.id == item_id), None)
+                if item:
+                    price = merchant.get_buy_price(item)
+                    if player.gold >= price:
+                        player.gold -= price
+                        merchant.gold += price
+                        player.inventory.append(item)
+                        merchant.inventory.remove(item)
+                        message = f"You bought a {item.name} for {price} gold."
+                    else:
+                        message = "You don't have enough gold."
+                else:
+                    message = "That item is not for sale."
+            elif verb == "sell":
+                item_id = " ".join(parts[1:])
+                item = next((i for i in player.inventory if i.id == item_id), None)
+                if item:
+                    price = merchant.get_sell_price(item)
+                    if merchant.gold >= price:
+                        merchant.gold -= price
+                        player.gold += price
+                        merchant.inventory.append(item)
+                        player.inventory.remove(item)
+                        merchant.item_sell_counts[item.id] += 1
+                        message = f"You sold a {item.name} for {price} gold."
+                    else:
+                        message = f"{merchant.name} doesn't have enough gold."
+                else:
+                    message = "You don't have that item."
+            elif verb == "leave":
+                game_mode = "explore"
+                trading_with_npc = None
+                message = "You stop trading."
+            continue
 
         if game_mode == "explore":
             player_turn_taken = True
@@ -241,6 +286,13 @@ def main():
                 if not npc:
                     message = "There is no one here by that name."
                 else:
+                    if isinstance(npc, Merchant):
+                        game_mode = "trade"
+                        trading_with_npc = npc
+                        message = f"You are now trading with {npc.name}."
+                        player_turn_taken = False
+                        continue
+
                     dialogue_to_use = None
                     if npc.healing_dialogue:
                         if player.hp < player.max_hp:
@@ -419,6 +471,8 @@ def main():
                     message += enemy_turn_message
 
             if player_turn_taken and player.is_alive():
+                time_manager.advance_time()
+
                 if isinstance(player.current_location, VolcanicLocation):
                     if not any(item.name == "Fireproof Armor" for item in player.inventory) and 'fire_resistance' not in player.status_effects:
                         fire_damage = 3

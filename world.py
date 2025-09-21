@@ -58,13 +58,32 @@ def load_world_from_data(game_data):
 
     all_npcs = {}
     for npc_id, npc_data in game_data.get("npcs", {}).items():
-        all_npcs[npc_id] = NPC(
-            npc_id, npc_data["name"], npc_data.get("dialogue", ""),
-            npc_data["hp"], npc_data["attack_power"],
-            gives_items_on_talk=npc_data.get("gives_items_on_talk"),
-            healing_dialogue=npc_data.get("healing_dialogue"),
-            teaches_skills=npc_data.get("teaches_skills")
-        )
+        npc_type = npc_data.get("npc_type", "NPC")
+        inventory = [all_items[item_id] for item_id in npc_data.get("inventory_ids", [])] if "inventory_ids" in npc_data else []
+
+        if npc_type == "Merchant":
+            from models import Merchant
+            all_npcs[npc_id] = Merchant(
+                id=npc_id,
+                name=npc_data["name"],
+                dialogue=npc_data.get("dialogue", ""),
+                hp=npc_data["hp"],
+                attack_power=npc_data["attack_power"],
+                inventory=inventory,
+                gold=npc_data.get("gold", 0)
+            )
+        else:
+            all_npcs[npc_id] = NPC(
+                id=npc_id,
+                name=npc_data["name"],
+                dialogue=npc_data.get("dialogue", ""),
+                hp=npc_data["hp"],
+                attack_power=npc_data["attack_power"],
+                inventory=inventory,
+                gives_items_on_talk=npc_data.get("gives_items_on_talk"),
+                healing_dialogue=npc_data.get("healing_dialogue"),
+                teaches_skills=npc_data.get("teaches_skills")
+            )
 
     all_locations = {}
     for loc_id, loc_data in game_data.get("locations", {}).items():
@@ -125,7 +144,7 @@ def load_world_from_data(game_data):
     player.quests = player_data.get("quests", {})
     player.discovered_locations.add(start_location.id)
 
-    return player, game_data.get("menus", {}), all_locations, all_items, all_monsters
+    return player, game_data.get("menus", {}), all_locations, all_items, all_monsters, all_npcs
 
 class AsciiMap:
     def __init__(self, all_locations, player):
