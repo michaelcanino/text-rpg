@@ -27,6 +27,15 @@ Each agent has a clear role and interacts with others to create the game loop.
 
 ---
 
+### Merchant (subclass of NPC)
+| Role | An NPC who buys and sells items. |
+|------|-----------------------------------|
+| **Data Source** | Defined in `game_data.json` with `npc_type: "Merchant"` |
+| **Attributes** | `inventory`, `gold`, `item_sell_counts` |
+| **Behavior** | Prices for items sold by the player decrease as the merchant's stock of that item increases. Inventory restocks after a set number of turns. |
+
+---
+
 ### Monster
 | Role | Enemy characters the player can fight. |
 |------|-----------------------------------------|
@@ -80,6 +89,10 @@ Each agent has a clear role and interacts with others to create the game loop.
   - +2 Attack Power  
   - +5% Critical Chance  
 - Applies the chosen effect and updates stats.  
+
+### TimeManager
+- Tracks the number of turns that have passed in the game.
+- Triggers events at set intervals, such as merchant restocking.
 
 ### World Builder (`world.py`)
 - Loads all **items, monsters, NPCs, and locations** from `game_data.json`.  

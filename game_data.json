@@ -12,7 +12,7 @@
       "name": "Oakhaven",
       "description": "A peaceful village nestled in a clearing. The smell of fresh bread fills the air.",
       "exits": { "north": "whispering_woods" },
-      "npc_ids": ["old_man_willow", "sister_elira"],
+      "npc_ids": ["old_man_willow", "sister_elira", "oakhaven_merchant"],
       "monster_ids": [],
       "item_ids": []
     },
@@ -133,6 +133,20 @@
       },
       "hp": 15,
       "attack_power": 0
+    },
+    "oakhaven_merchant": {
+      "name": "Marcus the Trader",
+      "npc_type": "Merchant",
+      "dialogue": [
+        {
+          "conditions": [],
+          "text": "Welcome, traveler! Care to trade?"
+        }
+      ],
+      "hp": 12,
+      "attack_power": 0,
+      "inventory_ids": ["healing_potion_1", "rusty_trinket_1"],
+      "gold": 100
     }
   },
   "monsters": {
@@ -315,6 +329,11 @@
       { "text": "Quit game", "command": "quit" }
     ]
   },
+  "trade": [
+    { "text": "Buy {item.name} ({price} gold)", "command": "buy {item.id}", "iterate": "merchant.inventory" },
+    { "text": "Sell {item.name} ({price} gold)", "command": "sell {item.id}", "iterate": "player.inventory" },
+    { "text": "Leave", "command": "leave" }
+  ],
   "quests": {
     "quest_cleared_swamp": {
       "name": "Clear the Sunken Swamp",

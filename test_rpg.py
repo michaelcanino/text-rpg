@@ -3,7 +3,7 @@ import json
 import os
 from unittest.mock import patch
 
-from models import Player, Potion, NPC
+from models import Player, Potion, NPC, Merchant
 from world import load_game_data, load_world_from_data
 from managers import SkillTreeManager, ClassManager, save_game, load_player_from_save
 from main import handle_class_choice, handle_skill_teaching
@@ -18,7 +18,7 @@ class TestRPGSystem(unittest.TestCase):
         self.class_manager = ClassManager(self.game_data.get("classes", {}))
 
         # Note: We get back menus, all_locations, etc. but we only need some for the tests
-        self.player, _, self.all_locations, self.all_items, _ = load_world_from_data(self.game_data)
+        self.player, _, self.all_locations, self.all_items, _, _ = load_world_from_data(self.game_data)
 
         self.player.current_location = self.all_locations["oakhaven"]
         self.player.hp = self.player.max_hp
@@ -193,6 +193,48 @@ class TestRPGSystem(unittest.TestCase):
         self.assertIsNotNone(dialogue)
         self.assertEqual(dialogue.get("gives_quest_id"), "quest_cleared_swamp")
         self.assertIn("lantern_1", dialogue.get("gives_items", []))
+
+    def test_merchant_trading(self):
+        """Test buying and selling items with a merchant."""
+        self.player.gold = 50
+        merchant = next((n for n in self.player.current_location.npcs if isinstance(n, Merchant)), None)
+        self.assertIsNotNone(merchant, "Merchant not found in Oakhaven")
+
+        initial_player_gold = self.player.gold
+        initial_merchant_gold = merchant.gold
+
+        # Buy an item from the merchant
+        item_to_buy = merchant.inventory[0]
+        buy_price = merchant.get_buy_price(item_to_buy)
+
+        self.player.gold -= buy_price
+        merchant.gold += buy_price
+        self.player.inventory.append(item_to_buy)
+        merchant.inventory.remove(item_to_buy)
+
+        self.assertEqual(self.player.gold, initial_player_gold - buy_price)
+        self.assertEqual(merchant.gold, initial_merchant_gold + buy_price)
+        self.assertIn(item_to_buy, self.player.inventory)
+        self.assertNotIn(item_to_buy, merchant.inventory)
+
+        # Sell an item to the merchant
+        item_to_sell = self.player.inventory[-1] # The item we just bought
+        sell_price = merchant.get_sell_price(item_to_sell)
+
+        self.player.gold += sell_price
+        merchant.gold -= sell_price
+        self.player.inventory.remove(item_to_sell)
+        merchant.inventory.append(item_to_sell)
+        merchant.item_sell_counts[item_to_sell.id] += 1
+
+        self.assertEqual(self.player.gold, initial_player_gold - buy_price + sell_price)
+        self.assertEqual(merchant.gold, initial_merchant_gold + buy_price - sell_price)
+        self.assertNotIn(item_to_sell, self.player.inventory)
+        self.assertIn(item_to_sell, merchant.inventory)
+
+        # Check that the sell price has decreased
+        new_sell_price = merchant.get_sell_price(item_to_sell)
+        self.assertLess(new_sell_price, sell_price)
 
 
 if __name__ == '__main__':
