@@ -22,7 +22,7 @@
       "description": "A dense forest where the trees seem to whisper secrets. Claw marks on the trees point westward. An old traveler's warning echoes in your mind: 'Beware the Ashen Peaks. Without protection, the fire will scorch you alive.'",
       "spawn_chance": 0.5,
       "exits": { "south": "oakhaven", "east": "sunken_swamp", "north": "ashen_peaks", "west": "goblin_cave" },
-      "npc_ids": [],
+      "npc_ids": ["sage_rowan"],
       "monster_ids": ["goblin_1"],
       "item_ids": []
     },
@@ -102,8 +102,25 @@
           "gives_items": ["lantern_1", "healing_potion_1", "healing_potion_2"]
         }
       ],
-      "teaches_skills": ["fireball"],
+      "teaches_skills": [],
       "hp": 10,
+      "attack_power": 0
+    },
+    "sage_rowan": {
+      "name": "Sage Rowan",
+      "dialogue": [
+        {
+          "conditions": [],
+          "text": "Ah, a seeker of knowledge. The arcane arts are a dangerous path, but rewarding to those who master them."
+        }
+      ],
+      "teaches_skills": [
+        {
+          "skill_id": "fireball",
+          "consume_item": false
+        }
+      ],
+      "hp": 12,
       "attack_power": 0
     },
     "sister_elira": {
